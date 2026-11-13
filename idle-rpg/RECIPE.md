@@ -1,5 +1,7 @@
 # Idle RPG
 
+Turn your agents into a raid party. Collect loot and upgrades as you progress.
+
 A castle rampart across the top of the window, in pixel art, staffed by a small adventuring party. You and every agent are stubby, dark-outlined characters in one of four classes (wizard, healer, warrior, archer), and what each agent's character is doing shows that agent's status. Behind the battlements the sky runs a full day and night every 20 minutes, with drifting clouds. Below it are the tabs and terminals; the standard Spaces and Agents sidebar is on the left.
 
 ![Idle RPG](preview.png)

@@ -8,6 +8,8 @@ Agent workspace visualizers for the [Herdr](https://herdr.dev) desktop app: layo
 
 ## Idle RPG
 
+Turn your agents into a raid party. Collect loot and upgrades as you progress.
+
 ![Idle RPG battle mode: the party attacking a dragon through a day and a night](idle-rpg/battle.gif)
 
 *The day and night are sped up here: a full cycle takes 20 minutes, not 18 seconds.*
