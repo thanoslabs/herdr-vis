@@ -1,4 +1,4 @@
-// Raid Party: a castle rampart under a moving sky (drifting clouds, and a day
+// Idle RPG: a castle rampart under a moving sky (drifting clouds, and a day
 // and a night every 20 minutes), staffed by a small adventuring party. You and
 // every agent are one of four classes: wizard, healer, warrior or archer. The
 // class is picked at random the first time someone appears and is remembered.
@@ -12,7 +12,7 @@
 // and drag an agent: it dangles from the
 // pointer; let go to drop it where it is (it falls to the floor). Spots and
 // classes are remembered.
-// Battle mode (the button by the sign): a random monster stands in the middle
+// Battle mode (the Start Raid / End Raid button by the sign): a random monster stands in the middle
 // with 100 HP and the party forms up around it, warriors up close and everyone
 // else at range. Every few seconds each working agent attacks in its own way
 // (sword swing, arrow, fireball, thrown potion) for 1 HP; when the monster
@@ -23,9 +23,9 @@ import { View, div, image } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { agents, props, run, setShared, shared, spaces } from "herdr";
 
-const ART = "mods/raid-party/art";
+const ART = "mods/idle-rpg/art";
 // shared: { you: {x, y}, spots: { <address>: {x, y} }, sprites: { you | <address>: <class> } }
-const STATE = "raid-party.state";
+const STATE = "idle-rpg.state";
 const CLASSES = ["wizard", "healer", "warrior", "archer"];
 const YOU = "you"; // the person's key in `sprites` and as an open card
 const randomClass = () => CLASSES[Math.floor(Math.random() * CLASSES.length)];
@@ -117,7 +117,7 @@ function ago(ms) {
 export default class RaidParty extends View {
   init(_props, cx) {
     // the later keys are this layout's earlier names, so a rename keeps what was saved
-    const saved = shared(STATE) ?? shared("rpg.state") ?? shared("snow-loft.state") ?? {};
+    const saved = shared(STATE) ?? shared("raid-party.state") ?? shared("rpg.state") ?? shared("snow-loft.state") ?? {};
     this.now = Date.now();
     cx.timer.every(TICK_MS, (cx) => {
       this.now = Date.now();
@@ -306,7 +306,7 @@ export default class RaidParty extends View {
     const art = (name, w, h) => image(`${ART}/${name}.png`).w(w).h(h);
     const pop = (id, name, w, h, at, on) =>
       div()
-        .id(`raid-party-${id}-${who.key}`)
+        .id(`idle-rpg-${id}-${who.key}`)
         .absolute()
         .left(at.x - w / 2)
         .top(at.y - h / 2)
@@ -315,7 +315,7 @@ export default class RaidParty extends View {
         .child(art(name, w, h));
     const shot = (name, w, h, hand, inner = (el) => el) =>
       div()
-        .id(`raid-party-shot-${who.key}`)
+        .id(`idle-rpg-shot-${who.key}`)
         .absolute()
         .left((flying ? hit.x : hand.x) - w / 2)
         .top((flying ? hit.y : hand.y) - h / 2)
@@ -332,7 +332,7 @@ export default class RaidParty extends View {
     // healer: the potion is lobbed, rising for the first half and falling for the second
     const lob = (el) =>
       el
-        .id(`raid-party-lob-${who.key}`)
+        .id(`idle-rpg-lob-${who.key}`)
         .top(phase === 2 ? -44 : 0)
         .transition("top", { duration: FLIGHT / 2, easing: phase === 2 ? "ease-out" : "ease-in" });
     return [shot("potion", 28, 36, from(24, 40), lob), pop("hit", "splash", 52, 32, hit, phase === 4)];
@@ -359,7 +359,7 @@ export default class RaidParty extends View {
     const tone = m.hp > 50 ? "#4cd47b" : m.hp > 20 ? "#ffd166" : "#ff5d5d";
     return [
       div()
-        .id(`raid-party-monster-${m.id}`)
+        .id(`idle-rpg-monster-${m.id}`)
         .absolute()
         .left(left)
         .top(top)
@@ -367,7 +367,7 @@ export default class RaidParty extends View {
         .transition("opacity", { duration: 1600, easing: "ease-in" })
         .child(
           div()
-            .id(`raid-party-monster-body-${m.id}`)
+            .id(`idle-rpg-monster-body-${m.id}`)
             .relative()
             .w(kind.w)
             .h(kind.h)
@@ -411,7 +411,7 @@ export default class RaidParty extends View {
             .w(BAR_W)
             .h(8)
             .bg("#1b2233")
-            .child(div().id("raid-party-monster-hp").h(8).w(Math.round((BAR_W * m.hp) / MONSTER_HP)).bg(tone).transition("width", { duration: 150, easing: "ease-out" })),
+            .child(div().id("idle-rpg-monster-hp").h(8).w(Math.round((BAR_W * m.hp) / MONSTER_HP)).bg(tone).transition("width", { duration: 150, easing: "ease-out" })),
         ),
     ];
   }
@@ -507,7 +507,7 @@ export default class RaidParty extends View {
       const gone = seconds * c.speed + c.off;
       const lap = Math.floor(gone / lane);
       return div()
-        .id(`raid-party-cloud-${i}-${lap}`)
+        .id(`idle-rpg-cloud-${i}-${lap}`)
         .absolute()
         .left(Math.round(gone - lap * lane) - 160)
         .top(-Math.round(c.up * Math.max(0, sky - c.h - 6)) - c.h - 4)
@@ -521,7 +521,7 @@ export default class RaidParty extends View {
       fittings.push(div().absolute().left(x).bottom(FLOOR_H + 2).child(image(`${ART}/banner.png`).w(40).h(56)));
       if (x + 232 > W - 60) continue;
       fittings.push(
-        fade(div().absolute().left(x + 188).bottom(FLOOR_H + 30).w(48).h(48), `raid-party-glow-${x}`, 0.25 + 0.75 * night).child(
+        fade(div().absolute().left(x + 188).bottom(FLOOR_H + 30).w(48).h(48), `idle-rpg-glow-${x}`, 0.25 + 0.75 * night).child(
           div().size_full().rounded(24).bg("#ffb34750").loop("opacity", { from: 0.55, to: 1, period: 640 }),
         ),
       );
@@ -529,10 +529,10 @@ export default class RaidParty extends View {
     }
 
     return [
-      fade(div().absolute().left(0).top(0).w(W).h(128), "raid-party-stars", night).children(tiles("stars", 256, 128, (el) => el.top(0))),
-      fade(div().absolute().left(0).top(0).bottom(0).w(W).bg(DAY), "raid-party-day", day),
+      fade(div().absolute().left(0).top(0).w(W).h(128), "idle-rpg-stars", night).children(tiles("stars", 256, 128, (el) => el.top(0))),
+      fade(div().absolute().left(0).top(0).bottom(0).w(W).bg(DAY), "idle-rpg-day", day),
       ...[0.75, 0.6, 0.45, 0.3, 0.15].map((o, i) =>
-        fade(div().absolute().left(0).bottom(horizon - 8 + i * 20).w(W).h(20).bg(DUSK), `raid-party-dusk-${i}`, dusk * o),
+        fade(div().absolute().left(0).bottom(horizon - 8 + i * 20).w(W).h(20).bg(DUSK), `idle-rpg-dusk-${i}`, dusk * o),
       ),
       div()
         .absolute()
@@ -540,13 +540,13 @@ export default class RaidParty extends View {
         .bottom(horizon)
         .w(W)
         .h(1)
-        .child(orb("raid-party-sun", "sun", turn))
-        .child(orb("raid-party-moon", "moon", turn + Math.PI))
+        .child(orb("idle-rpg-sun", "sun", turn))
+        .child(orb("idle-rpg-moon", "moon", turn + Math.PI))
         .children(clouds),
       ...tiles("mountains", 256, 80, (el) => el.bottom(horizon - 24)),
-      fade(div().absolute().left(0).top(0).bottom(FLOOR_H).w(W).bg(TINT), "raid-party-night-sky", night * 0.5),
+      fade(div().absolute().left(0).top(0).bottom(FLOOR_H).w(W).bg(TINT), "idle-rpg-night-sky", night * 0.5),
       ...tiles("wall", 128, WALL_H, (el) => el.bottom(FLOOR_H)),
-      fade(div().absolute().left(0).bottom(FLOOR_H).w(W).h(WALL_H - 20).bg(TINT), "raid-party-night-wall", night * 0.35),
+      fade(div().absolute().left(0).bottom(FLOOR_H).w(W).h(WALL_H - 20).bg(TINT), "idle-rpg-night-wall", night * 0.35),
       ...fittings,
     ];
   }
@@ -604,7 +604,7 @@ export default class RaidParty extends View {
     const open = this.card === a.address;
     return [
       div()
-        .id(`raid-party-shadow-${a.address}`)
+        .id(`idle-rpg-shadow-${a.address}`)
         .absolute()
         .left(x - 26)
         .top(y - 7)
@@ -636,7 +636,7 @@ export default class RaidParty extends View {
       // in a fight a working agent attacks instead of showing the swords overhead
       ...(fighting ? [] : [this.bubble(a, x, y)]),
       v_flex()
-        .id(`raid-party-label-${a.address}`)
+        .id(`idle-rpg-label-${a.address}`)
         .transition("left", MOVE)
         .transition("top", MOVE)
         .absolute()
@@ -666,7 +666,7 @@ export default class RaidParty extends View {
     const ms = this.walkMs ?? 300;
     const c = this.sprites[YOU];
     return v_flex()
-      .id("raid-party-you")
+      .id("idle-rpg-you")
       .absolute()
       .left(x - 36)
       .top(y - 66)
@@ -715,7 +715,7 @@ export default class RaidParty extends View {
       .children(
         CLASSES.map((c) =>
           div()
-            .id(`raid-party-pick-${c}`)
+            .id(`idle-rpg-pick-${c}`)
             .p(3)
             .rounded(7)
             .border(1)
@@ -751,7 +751,7 @@ export default class RaidParty extends View {
       .child(div().absolute().left(-26).top(-10).child(image(`${ART}/${this.sprites[key]}.png`).w(108).h(108)))
       .child(
         div()
-          .id("raid-party-card-wrench")
+          .id("idle-rpg-card-wrench")
           .absolute()
           .left(36)
           .top(2)
@@ -796,7 +796,7 @@ export default class RaidParty extends View {
       .child(div().flex_1().truncate().text_size(12).font_semibold().text_color("#ffffff").child(a ? (a.program?.name ?? a.app ?? "Agent") : "You"))
       .child(
         div()
-          .id("raid-party-card-x")
+          .id("idle-rpg-card-x")
           .px(5)
           .rounded(5)
           .text_size(12)
@@ -827,7 +827,7 @@ export default class RaidParty extends View {
       facts = facts.child(row("Class", klass[0].toUpperCase() + klass.slice(1)));
     }
     return v_flex()
-      .id("raid-party-card")
+      .id("idle-rpg-card")
       .absolute()
       .left(left)
       .top(top)
@@ -844,7 +844,7 @@ export default class RaidParty extends View {
       .when(Boolean(a), (el) =>
         el.child(
           div()
-            .id("raid-party-card-go")
+            .id("idle-rpg-card-go")
             .py(4)
             .rounded(6)
             .bg("#5cc8ff")
@@ -920,7 +920,7 @@ export default class RaidParty extends View {
           .child(div().absolute().left(136).top(-30).child(image(`${ART}/barrel.png`).w(48).h(52)))
           .child(
             div()
-              .id("raid-party-night-floor")
+              .id("idle-rpg-night-floor")
               .absolute()
               .left(0)
               .top(0)
@@ -961,7 +961,7 @@ export default class RaidParty extends View {
     };
 
     return div()
-      .id("raid-party")
+      .id("idle-rpg")
       .relative()
       .size_full()
       .overflow_hidden()
@@ -1035,7 +1035,7 @@ export default class RaidParty extends View {
           )
           .child(
             div()
-              .id("raid-party-battle-toggle")
+              .id("idle-rpg-battle-toggle")
               .px(6)
               .py(2)
               .rounded(5)
@@ -1052,7 +1052,7 @@ export default class RaidParty extends View {
                 this.save();
                 cx.notify();
               })
-              .child(this.battle ? "Battle on" : "Battle off"),
+              .child(this.battle ? "End Raid" : "Start Raid"),
           ),
       )
       .child(floor);

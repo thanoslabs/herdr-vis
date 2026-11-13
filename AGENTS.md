@@ -2,12 +2,12 @@
 
 ## Purpose
 
-Agent workspace visualizers for the [Herdr](https://herdr.dev) desktop app. Each top-level folder (currently `raid-party/`) is one layout, laid out like Herdr's config folder so `install.sh` can copy it into `~/.config/herdr-app`.
+Agent workspace visualizers for the [Herdr](https://herdr.dev) desktop app. Each top-level folder (currently `idle-rpg/`) is one layout, laid out like Herdr's config folder so `install.sh` can copy it into `~/.config/herdr-app`.
 
 ## Tech stack
 
 - **Herdr layouts** (`layouts/*.json`), **themes** (`themes/*.json`) and **mods** (`mods/<name>/main.js`, JavaScript against gpui-kit; no HTML, CSS or Node APIs)
-- **Python 3** (standard library only) for `tools/raid-party-sprites.py`, which draws the art, and a POSIX `sh` installer
+- **Python 3** (standard library only) for `tools/idle-rpg-sprites.py`, which draws the art, and a POSIX `sh` installer
 - **Renovate** and **GitHub Actions** (CI, release)
 - **MIT License**
 
@@ -15,14 +15,15 @@ Agent workspace visualizers for the [Herdr](https://herdr.dev) desktop app. Each
 
 ```
 .
-├── raid-party/                      # One visualizer
-│   ├── layouts/              # raid-party.json, raid-party.svg (settings preview)
-│   ├── mods/raid-party/             # main.js, mod.json, art/*.png
-│   ├── themes/               # raid-party.json
+├── idle-rpg/                      # One visualizer
+│   ├── layouts/              # idle-rpg.json, idle-rpg.svg (settings preview)
+│   ├── mods/idle-rpg/             # main.js, mod.json, art/*.png
+│   ├── themes/               # idle-rpg.json
 │   ├── RECIPE.md             # Brief another agent could rebuild it from
+│   ├── PLAN.md               # Planning notes for growing it into an idle RPG
 │   ├── preview.png           # Still, for Herdr's gallery
 │   └── battle.gif            # Battle mode in motion, for the README
-├── tools/                    # raid-party-sprites.py: generates every PNG in art/
+├── tools/                    # idle-rpg-sprites.py: generates every PNG in art/
 ├── install.sh                # Copies a visualizer into ~/.config/herdr-app
 ├── .github/                  # CODEOWNERS, Renovate config, workflows (CI, release, Renovate)
 ├── .tool-versions            # Pinned tool versions (asdf/mise)
@@ -36,7 +37,7 @@ Agent workspace visualizers for the [Herdr](https://herdr.dev) desktop app. Each
 ## Working on a visualizer
 
 - The reference for layouts, mods and the `herdr` module is `~/.config/herdr-app/AGENTS.md` and the `.d.ts` files beside it, rewritten by the app to match the installed version. Read them before changing a mod.
-- Edit files in the repo, then run `./install.sh raid-party` to copy them into Herdr. After every mod change run `herdr-app check <mod folder>`, then `herdr-app status` with the layout shown. `check` renders with no agents, so test agent-dependent code with a hard-coded fake agent.
+- Edit files in the repo, then run `./install.sh idle-rpg` to copy them into Herdr. After every mod change run `herdr-app check <mod folder>`, then `herdr-app status` with the layout shown. `check` renders with no agents, so test agent-dependent code with a hard-coded fake agent.
 - `herdr-app shot <file.png>` captures the window for visual checks.
 - Keep each visualizer's `RECIPE.md`, `preview.png` and `battle.gif` in step with its files.
 - Art is original. Do not copy characters or artwork from existing games or products.
