@@ -15,21 +15,36 @@ jobs:
 
       - name: Check for sensitive files
         run: |
-          # Fail if .env, secrets, or private keys are committed
-          if git grep -l "\.env\|PRIVATE_KEY\|AWS_SECRET" --cached 2>/dev/null; then
-            echo "Error: sensitive files committed"
+          # Fail if an env file or a private key is committed (by file name, not content).
+          found="$(git ls-files | grep -E '(^|/)\.env(\..*)?$|\.(pem|key)$' || true)"
+          if [ -n "$found" ]; then
+            echo "Error: sensitive files committed:"
+            echo "$found"
             exit 1
           fi
 
-      - name: Validate YAML files
+      - name: Validate YAML and JSON files
         run: |
-          for f in $(find . -name "*.yaml" -o -name "*.yml" 2>/dev/null | grep -v node_modules); do
-            python3 -c "import yaml, sys; yaml.safe_load(open('$f'))" 2>/dev/null || echo "Invalid YAML: $f"
+          status=0
+          for f in $(git ls-files '*.yaml' '*.yml'); do
+            python3 -c "import sys, yaml; yaml.safe_load(open(sys.argv[1]))" "$f" || { echo "Invalid YAML: $f"; status=1; }
+          done
+          for f in $(git ls-files '*.json'); do
+            python3 -c "import json, sys; json.load(open(sys.argv[1]))" "$f" || { echo "Invalid JSON: $f"; status=1; }
+          done
+          exit $status
+
+      - name: Check scripts
+        run: |
+          sh -n install.sh
+          python3 -m py_compile tools/*.py
+          for f in */mods/*/main.js; do
+            node --input-type=module --check < "$f" || { echo "Syntax error: $f"; exit 1; }
           done
 
-      # Add project-specific validation steps below, e.g.:
-      # - name: Run tests
-      #   run: go test ./...
-      #
-      # - name: Build Docker image
-      #   run: docker build .
+      - name: Install into an empty Herdr home
+        run: |
+          home="$(mktemp -d)"
+          HERDR_APP_HOME="$home" ./install.sh rpg
+          test -f "$home/layouts/rpg.json"
+          test -f "$home/mods/rpg/main.js"
