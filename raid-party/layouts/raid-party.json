@@ -6,13 +6,13 @@
     12,
     16
   ],
-  "theme": "rpg",
+  "theme": "raid-party",
   "background": "canvas",
   "terminal_padding": [
     14,
     12
   ],
-  "preview": "layouts/rpg.svg",
+  "preview": "layouts/raid-party.svg",
   "divider": {
     "width": 1,
     "color": "border"
@@ -100,7 +100,7 @@
           "min": 230,
           "max": 560,
           "content": {
-            "mod": "rpg",
+            "mod": "raid-party",
             "props": {
               "inset": 16
             }

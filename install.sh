@@ -2,10 +2,10 @@
 # Install a visualizer the way Herdr expects: copy its layout, theme and mod
 # files into the Herdr config home. Re-run to update an existing install.
 #
-#   ./install.sh [name]        default: rpg
+#   ./install.sh [name]        default: raid-party
 set -eu
 
-name="${1:-rpg}"
+name="${1:-raid-party}"
 case "$name" in
   '' | */* | .*) echo "not a visualizer name: $name" >&2; exit 2 ;;
 esac

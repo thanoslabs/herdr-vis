@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-# Draws RPG's pixel art as PNGs (no dependencies): the class sprites
+# Draws Raid Party's pixel art as PNGs (no dependencies): the class sprites
 # (stubby 16x16 adventurers with a one-pixel dark outline) and the castle
 # scenery (wall, floor, mountains, clouds, sun, moon, stars, props).
 #
-#   python3 tools/rpg-sprites.py rpg/mods/rpg/art
+#   python3 tools/raid-party-sprites.py raid-party/mods/raid-party/art
 #
 # Edit the grids below (one character per pixel, "." is empty) and re-run.
 # Everything is drawn at 8 image pixels per art pixel and shown at 4.
 import os, struct, sys, zlib
 if len(sys.argv) != 2:
-    sys.exit("usage: rpg-sprites.py <output folder>")
+    sys.exit("usage: raid-party-sprites.py <output folder>")
 out = sys.argv[1]
 os.makedirs(out, exist_ok=True)
 OUTLINE = "#141a26"

@@ -1,4 +1,4 @@
-// RPG: a castle rampart under a moving sky (drifting clouds, and a day
+// Raid Party: a castle rampart under a moving sky (drifting clouds, and a day
 // and a night every 20 minutes), staffed by a small adventuring party. You and
 // every agent are one of four classes: wizard, healer, warrior or archer. The
 // class is picked at random the first time someone appears and is remembered.
@@ -23,9 +23,9 @@ import { View, div, image } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { agents, props, run, setShared, shared, spaces } from "herdr";
 
-const ART = "mods/rpg/art";
+const ART = "mods/raid-party/art";
 // shared: { you: {x, y}, spots: { <address>: {x, y} }, sprites: { you | <address>: <class> } }
-const STATE = "rpg.state";
+const STATE = "raid-party.state";
 const CLASSES = ["wizard", "healer", "warrior", "archer"];
 const YOU = "you"; // the person's key in `sprites` and as an open card
 const randomClass = () => CLASSES[Math.floor(Math.random() * CLASSES.length)];
@@ -114,9 +114,10 @@ function ago(ms) {
   return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
 }
 
-export default class Rpg extends View {
+export default class RaidParty extends View {
   init(_props, cx) {
-    const saved = shared(STATE) ?? shared("snow-loft.state") ?? {}; // the second key is from before the rename
+    // the later keys are this layout's earlier names, so a rename keeps what was saved
+    const saved = shared(STATE) ?? shared("rpg.state") ?? shared("snow-loft.state") ?? {};
     this.now = Date.now();
     cx.timer.every(TICK_MS, (cx) => {
       this.now = Date.now();
@@ -298,7 +299,7 @@ export default class Rpg extends View {
     const art = (name, w, h) => image(`${ART}/${name}.png`).w(w).h(h);
     const pop = (id, name, w, h, at, on) =>
       div()
-        .id(`rpg-${id}-${who.key}`)
+        .id(`raid-party-${id}-${who.key}`)
         .absolute()
         .left(at.x - w / 2)
         .top(at.y - h / 2)
@@ -307,7 +308,7 @@ export default class Rpg extends View {
         .child(art(name, w, h));
     const shot = (name, w, h, hand, inner = (el) => el) =>
       div()
-        .id(`rpg-shot-${who.key}`)
+        .id(`raid-party-shot-${who.key}`)
         .absolute()
         .left((flying ? hit.x : hand.x) - w / 2)
         .top((flying ? hit.y : hand.y) - h / 2)
@@ -324,7 +325,7 @@ export default class Rpg extends View {
     // healer: the potion is lobbed, rising for the first half and falling for the second
     const lob = (el) =>
       el
-        .id(`rpg-lob-${who.key}`)
+        .id(`raid-party-lob-${who.key}`)
         .top(phase === 2 ? -44 : 0)
         .transition("top", { duration: FLIGHT / 2, easing: phase === 2 ? "ease-out" : "ease-in" });
     return [shot("potion", 28, 36, from(24, 40), lob), pop("hit", "splash", 52, 32, hit, phase === 4)];
@@ -351,7 +352,7 @@ export default class Rpg extends View {
     const tone = m.hp > 50 ? "#4cd47b" : m.hp > 20 ? "#ffd166" : "#ff5d5d";
     return [
       div()
-        .id(`rpg-monster-${m.id}`)
+        .id(`raid-party-monster-${m.id}`)
         .absolute()
         .left(left)
         .top(top)
@@ -359,7 +360,7 @@ export default class Rpg extends View {
         .transition("opacity", { duration: 1600, easing: "ease-in" })
         .child(
           div()
-            .id(`rpg-monster-body-${m.id}`)
+            .id(`raid-party-monster-body-${m.id}`)
             .relative()
             .w(kind.w)
             .h(kind.h)
@@ -403,7 +404,7 @@ export default class Rpg extends View {
             .w(BAR_W)
             .h(8)
             .bg("#1b2233")
-            .child(div().id("rpg-monster-hp").h(8).w(Math.round((BAR_W * m.hp) / MONSTER_HP)).bg(tone).transition("width", { duration: 400, easing: "ease-out" })),
+            .child(div().id("raid-party-monster-hp").h(8).w(Math.round((BAR_W * m.hp) / MONSTER_HP)).bg(tone).transition("width", { duration: 400, easing: "ease-out" })),
         ),
     ];
   }
@@ -499,7 +500,7 @@ export default class Rpg extends View {
       const gone = seconds * c.speed + c.off;
       const lap = Math.floor(gone / lane);
       return div()
-        .id(`rpg-cloud-${i}-${lap}`)
+        .id(`raid-party-cloud-${i}-${lap}`)
         .absolute()
         .left(Math.round(gone - lap * lane) - 160)
         .top(-Math.round(c.up * Math.max(0, sky - c.h - 6)) - c.h - 4)
@@ -513,7 +514,7 @@ export default class Rpg extends View {
       fittings.push(div().absolute().left(x).bottom(FLOOR_H + 2).child(image(`${ART}/banner.png`).w(40).h(56)));
       if (x + 232 > W - 60) continue;
       fittings.push(
-        fade(div().absolute().left(x + 188).bottom(FLOOR_H + 30).w(48).h(48), `rpg-glow-${x}`, 0.25 + 0.75 * night).child(
+        fade(div().absolute().left(x + 188).bottom(FLOOR_H + 30).w(48).h(48), `raid-party-glow-${x}`, 0.25 + 0.75 * night).child(
           div().size_full().rounded(24).bg("#ffb34750").loop("opacity", { from: 0.55, to: 1, period: 640 }),
         ),
       );
@@ -521,10 +522,10 @@ export default class Rpg extends View {
     }
 
     return [
-      fade(div().absolute().left(0).top(0).w(W).h(128), "rpg-stars", night).children(tiles("stars", 256, 128, (el) => el.top(0))),
-      fade(div().absolute().left(0).top(0).bottom(0).w(W).bg(DAY), "rpg-day", day),
+      fade(div().absolute().left(0).top(0).w(W).h(128), "raid-party-stars", night).children(tiles("stars", 256, 128, (el) => el.top(0))),
+      fade(div().absolute().left(0).top(0).bottom(0).w(W).bg(DAY), "raid-party-day", day),
       ...[0.75, 0.6, 0.45, 0.3, 0.15].map((o, i) =>
-        fade(div().absolute().left(0).bottom(horizon - 8 + i * 20).w(W).h(20).bg(DUSK), `rpg-dusk-${i}`, dusk * o),
+        fade(div().absolute().left(0).bottom(horizon - 8 + i * 20).w(W).h(20).bg(DUSK), `raid-party-dusk-${i}`, dusk * o),
       ),
       div()
         .absolute()
@@ -532,13 +533,13 @@ export default class Rpg extends View {
         .bottom(horizon)
         .w(W)
         .h(1)
-        .child(orb("rpg-sun", "sun", turn))
-        .child(orb("rpg-moon", "moon", turn + Math.PI))
+        .child(orb("raid-party-sun", "sun", turn))
+        .child(orb("raid-party-moon", "moon", turn + Math.PI))
         .children(clouds),
       ...tiles("mountains", 256, 80, (el) => el.bottom(horizon - 24)),
-      fade(div().absolute().left(0).top(0).bottom(FLOOR_H).w(W).bg(TINT), "rpg-night-sky", night * 0.5),
+      fade(div().absolute().left(0).top(0).bottom(FLOOR_H).w(W).bg(TINT), "raid-party-night-sky", night * 0.5),
       ...tiles("wall", 128, WALL_H, (el) => el.bottom(FLOOR_H)),
-      fade(div().absolute().left(0).bottom(FLOOR_H).w(W).h(WALL_H - 20).bg(TINT), "rpg-night-wall", night * 0.35),
+      fade(div().absolute().left(0).bottom(FLOOR_H).w(W).h(WALL_H - 20).bg(TINT), "raid-party-night-wall", night * 0.35),
       ...fittings,
     ];
   }
@@ -596,7 +597,7 @@ export default class Rpg extends View {
     const open = this.card === a.address;
     return [
       div()
-        .id(`rpg-shadow-${a.address}`)
+        .id(`raid-party-shadow-${a.address}`)
         .absolute()
         .left(x - 26)
         .top(y - 7)
@@ -628,7 +629,7 @@ export default class Rpg extends View {
       // in a fight a working agent attacks instead of showing the swords overhead
       ...(fighting ? [] : [this.bubble(a, x, y)]),
       v_flex()
-        .id(`rpg-label-${a.address}`)
+        .id(`raid-party-label-${a.address}`)
         .transition("left", MOVE)
         .transition("top", MOVE)
         .absolute()
@@ -658,7 +659,7 @@ export default class Rpg extends View {
     const ms = this.walkMs ?? 300;
     const c = this.sprites[YOU];
     return v_flex()
-      .id("rpg-you")
+      .id("raid-party-you")
       .absolute()
       .left(x - 36)
       .top(y - 66)
@@ -707,7 +708,7 @@ export default class Rpg extends View {
       .children(
         CLASSES.map((c) =>
           div()
-            .id(`rpg-pick-${c}`)
+            .id(`raid-party-pick-${c}`)
             .p(3)
             .rounded(7)
             .border(1)
@@ -743,7 +744,7 @@ export default class Rpg extends View {
       .child(div().absolute().left(-26).top(-10).child(image(`${ART}/${this.sprites[key]}.png`).w(108).h(108)))
       .child(
         div()
-          .id("rpg-card-wrench")
+          .id("raid-party-card-wrench")
           .absolute()
           .left(36)
           .top(2)
@@ -788,7 +789,7 @@ export default class Rpg extends View {
       .child(div().flex_1().truncate().text_size(12).font_semibold().text_color("#ffffff").child(a ? (a.program?.name ?? a.app ?? "Agent") : "You"))
       .child(
         div()
-          .id("rpg-card-x")
+          .id("raid-party-card-x")
           .px(5)
           .rounded(5)
           .text_size(12)
@@ -819,7 +820,7 @@ export default class Rpg extends View {
       facts = facts.child(row("Class", klass[0].toUpperCase() + klass.slice(1)));
     }
     return v_flex()
-      .id("rpg-card")
+      .id("raid-party-card")
       .absolute()
       .left(left)
       .top(top)
@@ -836,7 +837,7 @@ export default class Rpg extends View {
       .when(Boolean(a), (el) =>
         el.child(
           div()
-            .id("rpg-card-go")
+            .id("raid-party-card-go")
             .py(4)
             .rounded(6)
             .bg("#5cc8ff")
@@ -912,7 +913,7 @@ export default class Rpg extends View {
           .child(div().absolute().left(136).top(-30).child(image(`${ART}/barrel.png`).w(48).h(52)))
           .child(
             div()
-              .id("rpg-night-floor")
+              .id("raid-party-night-floor")
               .absolute()
               .left(0)
               .top(0)
@@ -953,7 +954,7 @@ export default class Rpg extends View {
     };
 
     return div()
-      .id("rpg")
+      .id("raid-party")
       .relative()
       .size_full()
       .overflow_hidden()
@@ -1017,7 +1018,7 @@ export default class Rpg extends View {
           .bg("#00000050")
           .child(
             v_flex()
-              .child(div().text_size(13).font_semibold().text_color(CREAM).child("RPG"))
+              .child(div().text_size(13).font_semibold().text_color(CREAM).child("Raid Party"))
               .child(
                 div()
                   .text_size(10)
@@ -1027,7 +1028,7 @@ export default class Rpg extends View {
           )
           .child(
             div()
-              .id("rpg-battle-toggle")
+              .id("raid-party-battle-toggle")
               .px(6)
               .py(2)
               .rounded(5)
