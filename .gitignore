@@ -63,3 +63,7 @@ venv/
 *.tmp
 *.temp
 .cache/
+
+# Written by the Herdr app into every mod folder on start
+gpui-kit.d.ts
+jsconfig.json
