@@ -6,13 +6,13 @@
     12,
     16
   ],
-  "theme": "raid-party",
+  "theme": "idle-rpg",
   "background": "canvas",
   "terminal_padding": [
     14,
     12
   ],
-  "preview": "layouts/raid-party.svg",
+  "preview": "layouts/idle-rpg.svg",
   "divider": {
     "width": 1,
     "color": "border"
@@ -100,7 +100,7 @@
           "min": 230,
           "max": 560,
           "content": {
-            "mod": "raid-party",
+            "mod": "idle-rpg",
             "props": {
               "inset": 16
             }
