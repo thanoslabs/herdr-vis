@@ -12,6 +12,11 @@
 // and drag an agent: it dangles from the
 // pointer; let go to drop it where it is (it falls to the floor). Spots and
 // classes are remembered.
+// Battle mode (the button by the sign): a random monster stands in the middle
+// with 100 HP and the party forms up around it, warriors up close and everyone
+// else at range. Every few seconds each working agent attacks in its own way
+// (sword swing, arrow, fireball, thrown potion) for 1 HP; when the monster
+// falls another one turns up. Turning it off sends everyone back to their spots.
 // Layout props: { inset } = left edge of the sign (84 leaves room for macOS buttons).
 
 import { View, div, image } from "gpui-kit";
@@ -58,6 +63,27 @@ const CELL_W = 88;
 const YOU_Y = [12, FLOOR_H - 24];
 const CRITTER_Y = [16, FLOOR_H - 42];
 const CARD_W = 232;
+// Battle mode. Sizes are on-screen px (art px x 4, plus the outline).
+const MONSTERS = {
+  slime: { name: "Slime", w: 136, h: 104 },
+  ogre: { name: "Ogre", w: 200, h: 200 },
+  dragon: { name: "Dragon", w: 328, h: 264 },
+};
+const MONSTER_HP = 100;
+const ATTACK_MS = 3000; // each working agent hits once per beat, for 1 HP
+const RESPAWN_MS = 9000; // how long a fallen monster lies there before the next
+const MONSTER_Y = 108; // where its feet are on the floor
+const BAR_W = 120;
+const MELEE = 80; // how close to the monster's edge a warrior must be to reach it
+const RANGE = 360; // how far the ranged classes stand from the monster: five characters
+// An attack plays in phases after each beat: 1 is the wind-up, 2 and 3 the
+// two halves of the strike or flight, 4 the impact, 0 rest. These are when
+// phases 2, 3, 4 and 0 begin, in ms.
+const STEPS = [220, 470, 720, 1150];
+const FLIGHT = STEPS[2] - STEPS[0];
+const BLINK_MS = 5200; // monsters blink this often
+const ROAR_MS = 14000; // and the ogre roars this often
+const MOVE = { duration: 700, easing: "ease-in-out" }; // walking between spots and the formation
 
 function clamp(n, lo, hi) {
   return Math.max(lo, Math.min(hi, n));
@@ -95,6 +121,34 @@ export default class Rpg extends View {
     this.spots = { ...(saved.spots ?? {}) };
     this.sprites = { ...(saved.sprites ?? {}) };
     this.seen = { ...(saved.seen ?? {}) }; // <address>: when it was last here
+    this.battle = saved.battle ?? true;
+    this.monster = saved.monster ?? null; // { kind, hp, id, slainAt? }
+    this.slain = saved.slain ?? 0;
+    this.unsaved = 0; // damage dealt since the last save
+    this.phase = 0; // where the current attack is: see STEPS
+    this.beat = 0;
+    this.blink = false;
+    this.roar = false;
+    // A blink and a roar are each two renders: on, then off a moment later.
+    const flick = (key, ms, ok) => (cx) => {
+      if (!this.fighting || !(this.monster?.hp > 0) || !ok()) return;
+      this[key] = true;
+      cx.notify();
+      cx.timer.after(ms, (cx) => {
+        this[key] = false;
+        cx.notify();
+      });
+    };
+    cx.timer.every(BLINK_MS, flick("blink", 170, () => !this.roar));
+    cx.timer.every(ROAR_MS, flick("roar", 1100, () => this.monster.kind === "ogre"));
+    cx.timer.every(ATTACK_MS, (cx) => {
+      let hits = agents().filter((a) => a.status === "working").length;
+      if (hits > 0 && this.joins(Math.max(320, this.size.width))) hits += 1; // you fight alongside them
+      const alive = this.monster?.hp > 0;
+      if (!this.fight(hits)) return;
+      if (alive && hits > 0) this.strike(cx);
+      cx.notify();
+    });
     if (!CLASSES.includes(this.sprites[YOU])) {
       this.sprites[YOU] = randomClass();
       this.save();
@@ -117,7 +171,215 @@ export default class Rpg extends View {
       delete this.spots[k];
       delete this.sprites[k];
     }
-    setShared(STATE, { you: this.you, spots: this.spots, sprites: this.sprites, seen: this.seen });
+    setShared(STATE, {
+      you: this.you,
+      spots: this.spots,
+      sprites: this.sprites,
+      seen: this.seen,
+      battle: this.battle,
+      monster: this.monster,
+      slain: this.slain,
+    });
+    this.unsaved = 0;
+  }
+
+  // One beat of the battle with `hits` agents working. Returns whether anything
+  // changed. HP is saved every tenth point and on a kill, not on every hit.
+  fight(hits) {
+    if (!this.battle) return false;
+    const m = this.monster;
+    if (!m || !MONSTERS[m.kind] || (m.hp <= 0 && Date.now() - (m.slainAt ?? 0) >= RESPAWN_MS)) {
+      const kinds = Object.keys(MONSTERS).filter((k) => k !== m?.kind);
+      this.monster = { kind: kinds[Math.floor(Math.random() * kinds.length)], hp: MONSTER_HP, id: (m?.id ?? 0) + 1 };
+      this.save();
+      return true;
+    }
+    if (m.hp <= 0 || hits <= 0) return false;
+    m.hp = Math.max(0, m.hp - hits);
+    this.unsaved += hits;
+    if (m.hp === 0) {
+      m.slainAt = Date.now();
+      this.slain += 1;
+    }
+    if (m.hp === 0 || this.unsaved >= 10) this.save();
+    return true;
+  }
+
+  // Whether you join in when the party attacks: the ranged classes from
+  // wherever you stand, a warrior only from beside the monster.
+  joins(W) {
+    const kind = MONSTERS[this.monster?.kind];
+    if (!this.fighting || !kind || !(this.monster.hp > 0)) return false;
+    return this.sprites[YOU] !== "warrior" || Math.abs(this.you.x - W / 2) - kind.w / 2 <= MELEE;
+  }
+
+  // Plays one attack: walks `phase` through 1, 2, 3, 4 and back to 0.
+  strike(cx) {
+    const beat = (this.beat += 1);
+    this.phase = 1;
+    STEPS.forEach((ms, i) =>
+      cx.timer.after(ms, (cx) => {
+        if (beat !== this.beat) return;
+        this.phase = i === STEPS.length - 1 ? 0 : i + 2;
+        cx.notify();
+      }),
+    );
+  }
+
+  // Where everyone stands for the fight: warriors beside the monster, the
+  // others RANGE away (less if the scene is narrow), alternating sides.
+  formation(list, W, kind) {
+    const mid = Math.round(W / 2);
+    const half = kind.w / 2;
+    const reach = Math.max(110, Math.min(RANGE, mid - half - 60));
+    const rows = [96, 60]; // each next one on a side stands a step further out, staggered
+    const spots = {};
+    const count = { melee: 0, ranged: 0 };
+    for (const a of list) {
+      const melee = this.sprites[a.address] === "warrior";
+      const i = melee ? count.melee++ : count.ranged++;
+      const side = i % 2 ? 1 : -1; // left first
+      const n = Math.floor(i / 2);
+      const out = half + (melee ? 34 : reach) + n * 62;
+      spots[a.address] = {
+        x: Math.round(clamp(mid + side * out, 36, W - 36)),
+        y: clamp(rows[n % rows.length], CRITTER_Y[0], CRITTER_Y[1] + 12),
+        dir: -side, // which way the monster is
+      };
+    }
+    return spots;
+  }
+
+  // What flies and lands for one agent's attack (the sprite itself strikes the
+  // pose, see critter). Things that fly sit hidden at the hand, glide to the
+  // monster during phases 2 and 3, then vanish and slip back unseen; the impact
+  // pops in at phase 4 and fades.
+  // `who` is { key, cls, x, y, dir }: an agent in formation, or you.
+  attack(who, W, kind) {
+    const s = who;
+    const c = who.cls;
+    const d = who.dir;
+    const side = d > 0 ? "r" : "l";
+    const flying = this.phase === 2 || this.phase === 3;
+    const hit = { x: Math.round(W / 2 - d * (kind.w / 2 - 44)), y: Math.round(MONSTER_Y - Math.min(kind.h * 0.45, 96)) };
+    const art = (name, w, h) => image(`${ART}/${name}.png`).w(w).h(h);
+    const pop = (id, name, w, h, at, on) =>
+      div()
+        .id(`rpg-${id}-${who.key}`)
+        .absolute()
+        .left(at.x - w / 2)
+        .top(at.y - h / 2)
+        .opacity(on ? 1 : 0)
+        .transition("opacity", { duration: on ? 20 : 350, easing: "ease-out" })
+        .child(art(name, w, h));
+    const shot = (name, w, h, hand, inner = (el) => el) =>
+      div()
+        .id(`rpg-shot-${who.key}`)
+        .absolute()
+        .left((flying ? hit.x : hand.x) - w / 2)
+        .top((flying ? hit.y : hand.y) - h / 2)
+        .opacity(flying ? 1 : 0)
+        .transition("left", { duration: FLIGHT, easing: "linear" })
+        .transition("top", { duration: FLIGHT, easing: "linear" })
+        .child(inner(div().relative()).child(art(name, w, h)));
+    const from = (dx, dy) => ({ x: s.x + d * dx, y: s.y - dy });
+
+    // the warrior swings its own sword; only the slash is extra
+    if (c === "warrior") return [pop("slash", `slash-${side}`, 32, 44, from(62, 24), this.phase === 2)];
+    if (c === "archer") return [shot(`arrow-${side}`, 44, 20, from(40, 22)), pop("hit", "spark", 20, 20, hit, this.phase === 4)];
+    if (c === "wizard") return [shot(`fireball-${side}`, 40, 32, from(46, 26)), pop("hit", "burst", 44, 44, hit, this.phase === 4)];
+    // healer: the potion is lobbed, rising for the first half and falling for the second
+    const lob = (el) =>
+      el
+        .id(`rpg-lob-${who.key}`)
+        .top(this.phase === 2 ? -44 : 0)
+        .transition("top", { duration: FLIGHT / 2, easing: this.phase === 2 ? "ease-out" : "ease-in" });
+    return [shot("potion", 28, 36, from(24, 40), lob), pop("hit", "splash", 52, 32, hit, this.phase === 4)];
+  }
+
+  // The monster and its health bar. `hits` is how many agents are attacking it.
+  foe(W, hits) {
+    const m = this.monster;
+    const kind = m && MONSTERS[m.kind];
+    if (!this.battle || !kind || W < 640) return [];
+    const left = Math.round(W / 2 - kind.w / 2);
+    const top = MONSTER_Y - kind.h + 4;
+    const dead = m.hp <= 0;
+    const hurt = hits > 0 && !dead;
+    const roaring = m.kind === "ogre" && this.roar;
+    const breathes = !dead && !roaring && m.kind !== "slime";
+    const lids = this.blink && !dead && !roaring;
+    const tone = m.hp > 50 ? "#4cd47b" : m.hp > 20 ? "#ffd166" : "#ff5d5d";
+    return [
+      div()
+        .id(`rpg-monster-${m.id}`)
+        .absolute()
+        .left(left)
+        .top(top)
+        .opacity(dead ? 0 : 1)
+        .transition("opacity", { duration: 1600, easing: "ease-in" })
+        .child(
+          div()
+            .id(`rpg-monster-body-${m.id}`)
+            .relative()
+            .w(kind.w)
+            .h(kind.h)
+            // It recoils a little when a blow lands. Otherwise the slime
+            // wobbles and the dragon's tail sways (easing between two frames),
+            // the ogre now and then roars, and all blink. The ogre and dragon
+            // breathe: their upper body is a second picture that rises a few
+            // pixels over the still one, so the feet stay planted.
+            .top(this.phase === 4 && hurt ? -4 : 0)
+            .transition("top", { duration: 90, easing: "ease-out" })
+            .child(image(`${ART}/monster-${m.kind}${roaring ? "-2" : ""}.png`).w(kind.w).h(kind.h))
+            .when(m.kind !== "ogre", (el) =>
+              el.child(
+                div()
+                  .absolute()
+                  .left(0)
+                  .top(0)
+                  .loop("opacity", { from: 0, to: 1, period: m.kind === "dragon" ? 2400 : 1700 })
+                  .child(image(`${ART}/monster-${m.kind}-2.png`).w(kind.w).h(kind.h)),
+              ),
+            )
+            .when(breathes, (el) =>
+              el.child(
+                div()
+                  .absolute()
+                  .left(0)
+                  .top(0)
+                  .loop("top", { from: 0, to: -3, period: m.kind === "dragon" ? 3200 : 2600 })
+                  .child(image(`${ART}/monster-${m.kind}-top.png`).w(kind.w).h(kind.h))
+                  .when(lids, (inner) => inner.child(div().absolute().left(0).top(0).child(image(`${ART}/monster-${m.kind}-blink.png`).w(kind.w).h(kind.h)))),
+              ),
+            )
+            .when(lids && !breathes, (el) => el.child(div().absolute().left(0).top(0).child(image(`${ART}/monster-${m.kind}-blink.png`).w(kind.w).h(kind.h)))),
+        ),
+      v_flex()
+        .absolute()
+        .left(left + Math.round(kind.w / 2) - BAR_W / 2 - 4)
+        .top(top - 34)
+        .w(BAR_W + 8)
+        .p(3)
+        .gap(2)
+        .bg("#000000a0")
+        .child(
+          h_flex()
+            .justify_between()
+            .text_size(10)
+            .font_semibold()
+            .text_color(CREAM)
+            .child(div().child(dead ? `${kind.name} slain!` : kind.name))
+            .child(div().child(dead ? "" : `${m.hp}/${MONSTER_HP}`)),
+        )
+        .child(
+          div()
+            .w(BAR_W)
+            .h(8)
+            .bg("#1b2233")
+            .child(div().id("rpg-monster-hp").h(8).w(Math.round((BAR_W * m.hp) / MONSTER_HP)).bg(tone).transition("width", { duration: 400, easing: "ease-out" })),
+        ),
+    ];
   }
 
   // A pointer event on the root, as a point in floor coordinates.
@@ -292,15 +554,27 @@ export default class Rpg extends View {
   // An agent at rest: shadow, sprite, bubble, name. Returns elements for the floor.
   critter(a) {
     const c = this.sprites[a.address];
-    const { x, y } = this.spots[a.address];
+    const { x, y } = this.at[a.address];
+    const fighting = this.fighting && a.status === "working";
+    // In formation everyone faces the monster in a fighting stance, on a wider
+    // picture (96px) so a weapon can reach out; a working agent winds up on
+    // phase 1 and strikes on 2 and 3.
+    const dir = this.at[a.address].dir;
+    const frame = !fighting || !(this.monster?.hp > 0) ? "f" : this.phase === 1 ? "a1" : this.phase === 2 || this.phase === 3 ? "a2" : "f";
+    const pose = this.fighting
+      ? div().relative().w(72).h(72).child(div().absolute().left(dir > 0 ? 0 : -24).top(0).child(image(`${ART}/${c}-${frame}-${dir > 0 ? "r" : "l"}.png`).w(96).h(72)))
+      : image(`${ART}/${c}.png`).w(72).h(72);
     const who = a.program?.name ?? a.app ?? "agent";
     const where = `${a.space_name} · ${a.tab_name}`;
     const open = this.card === a.address;
     return [
       div()
+        .id(`rpg-shadow-${a.address}`)
         .absolute()
         .left(x - 26)
         .top(y - 7)
+        .transition("left", MOVE)
+        .transition("top", MOVE)
         .w(52)
         .h(14)
         .rounded(7)
@@ -312,7 +586,8 @@ export default class Rpg extends View {
         .absolute()
         .left(x - 36)
         .top(y - 66)
-        .transition("top", { duration: 260, easing: "ease-in" })
+        .transition("left", MOVE)
+        .transition("top", this.fighting ? MOVE : { duration: 260, easing: "ease-in" })
         .cursor_pointer()
         .on_mouse_down("left", (e) => {
           this.press = { kind: "critter", address: a.address, px: e.position.x, py: e.position.y };
@@ -320,11 +595,15 @@ export default class Rpg extends View {
         .child(
           div()
             .relative()
-            .when(a.status === "working", (el) => el.loop("top", { from: 0, to: -7, period: 520 }))
-            .child(image(`${ART}/${c}.png`).w(72).h(72)),
+            .when(a.status === "working" && !fighting, (el) => el.loop("top", { from: 0, to: -7, period: 520 }))
+            .child(pose),
         ),
-      this.bubble(a, x, y),
+      // in a fight a working agent attacks instead of showing the swords overhead
+      ...(fighting ? [] : [this.bubble(a, x, y)]),
       v_flex()
+        .id(`rpg-label-${a.address}`)
+        .transition("left", MOVE)
+        .transition("top", MOVE)
         .absolute()
         .left(x - CELL_W / 2)
         .top(y + 11)
@@ -369,7 +648,27 @@ export default class Rpg extends View {
         // 16x16 pixel art on an 18x18 canvas (room for the outline), drawn at
         // 72 so every pixel is a crisp 4x4. They are PNGs at twice that size:
         // SVGs came out soft on retina screens.
-        image(`${ART}/${c}${this.walking ? (this.step ? "-walk-r" : "-walk-l") : ""}.png`).w(72).h(72),
+        // In a fight, standing still, you face the monster in the same stance
+        // and attack frames as the agents (see critter).
+        this.fighting && !this.walking
+          ? div()
+              .relative()
+              .w(72)
+              .h(72)
+              .child(
+                div()
+                  .absolute()
+                  .left(this.youDir > 0 ? 0 : -24)
+                  .top(0)
+                  .child(
+                    image(
+                      `${ART}/${c}-${!this.youFights ? "f" : this.phase === 1 ? "a1" : this.phase === 2 || this.phase === 3 ? "a2" : "f"}-${this.youDir > 0 ? "r" : "l"}.png`,
+                    )
+                      .w(96)
+                      .h(72),
+                  ),
+              )
+          : image(`${ART}/${c}${this.walking ? (this.step ? "-walk-r" : "-walk-l") : ""}.png`).w(72).h(72),
       )
       .child(div().px(6).rounded(7).bg(this.card === YOU ? "#00000080" : "#00000040").text_size(10).font_semibold().text_color(CREAM).child("You"));
   }
@@ -438,7 +737,7 @@ export default class Rpg extends View {
   // The card over whoever was clicked: `a` is an agent, or null for you.
   infoCard(a, W) {
     const key = a ? a.address : YOU;
-    const s = a ? this.spots[a.address] : this.you;
+    const s = a ? this.at[a.address] : this.you;
     const row = (k, v) =>
       h_flex()
         .gap(6)
@@ -540,13 +839,23 @@ export default class Rpg extends View {
     this.you = you;
 
     // Whoever stands lower on the floor is drawn in front.
-    const actors = [{ y: you.y, draw: () => [this.you_()] }];
+    const hits = list.filter((a) => a.status === "working").length;
+    // In a fight everyone stands in formation; otherwise at their own spots.
+    const foeKind = this.battle && W >= 640 ? MONSTERS[this.monster?.kind] : null;
+    this.fighting = Boolean(foeKind);
+    this.at = foeKind ? this.formation(list, W, foeKind) : this.spots;
+    const youDir = you.x <= W / 2 ? 1 : -1; // which way the monster is from you
+    this.youFights = hits > 0 && this.joins(W);
+    this.youDir = youDir;
+    const actors = [{ y: you.y, draw: () => [this.you_()] }, { y: MONSTER_Y, draw: () => this.foe(W, hits) }];
+    if (this.youFights) actors.push({ y: FLOOR_H, draw: () => this.attack({ key: YOU, cls: this.sprites[YOU], x: you.x, y: you.y, dir: youDir }, W, foeKind) });
     for (const a of list) {
       if (this.drag?.address === a.address) continue;
       const s = this.spots[a.address];
       s.x = Math.round(clamp(s.x, 36, W - 36));
       s.y = Math.round(s.y);
-      actors.push({ y: s.y, draw: () => this.critter(a) });
+      actors.push({ y: this.at[a.address].y, draw: () => this.critter(a) });
+      if (this.fighting && a.status === "working" && this.monster.hp > 0) actors.push({ y: FLOOR_H, draw: () => this.attack({ key: a.address, cls: this.sprites[a.address], ...this.at[a.address] }, W, foeKind) });
     }
     actors.sort((p, q) => p.y - q.y);
 
@@ -570,9 +879,9 @@ export default class Rpg extends View {
           .w(W)
           .h(FLOOR_H)
           .children(boards)
-          // the table and the barrel stand at the back
+          // the table and the barrel stand at the back, clear of the monster's corner
           .child(div().absolute().left(12).top(-34).child(image(`${ART}/table.png`).w(112).h(56)))
-          .child(div().absolute().left(W - 68).top(-30).child(image(`${ART}/barrel.png`).w(48).h(52)))
+          .child(div().absolute().left(136).top(-30).child(image(`${ART}/barrel.png`).w(48).h(52)))
           .child(
             div()
               .id("rpg-night-floor")
@@ -632,7 +941,7 @@ export default class Rpg extends View {
       })
       .on_mouse_move((e, cx) => {
         const pr = this.press;
-        if (!pr || pr.kind !== "critter") return;
+        if (!pr || pr.kind !== "critter" || this.fighting) return;
         const moved = Math.abs(e.position.x - pr.px) + Math.abs(e.position.y - pr.py);
         if (!this.drag && moved <= 4) return;
         const p = this.point(e);
@@ -668,16 +977,47 @@ export default class Rpg extends View {
       })
       .children(scenery)
       .child(
-        v_flex()
+        h_flex()
           .absolute()
           .left(props()?.inset ?? 84)
           .top(8)
+          .gap(8)
+          .items_center()
           .px(6)
           .py(2)
           .rounded(6)
           .bg("#00000050")
-          .child(div().text_size(13).font_semibold().text_color(CREAM).child("RPG"))
-          .child(div().text_size(10).text_color("#d5e3f0").child(summary(list) || "nobody in yet")),
+          .child(
+            v_flex()
+              .child(div().text_size(13).font_semibold().text_color(CREAM).child("RPG"))
+              .child(
+                div()
+                  .text_size(10)
+                  .text_color("#d5e3f0")
+                  .child([summary(list) || "nobody in yet", this.battle && this.slain ? `${this.slain} slain` : ""].filter(Boolean).join(" · ")),
+              ),
+          )
+          .child(
+            div()
+              .id("rpg-battle-toggle")
+              .px(6)
+              .py(2)
+              .rounded(5)
+              .text_size(10)
+              .font_semibold()
+              .bg(this.battle ? "#c94040" : "#ffffff1c")
+              .text_color(this.battle ? "#ffffff" : "#d5e3f0")
+              .cursor_pointer()
+              .hover((st) => st.bg(this.battle ? "#e05555" : "#ffffff30"))
+              .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+              .on_click((_e, cx) => {
+                this.battle = !this.battle;
+                if (this.battle) this.fight(0); // someone to fight straight away
+                this.save();
+                cx.notify();
+              })
+              .child(this.battle ? "Battle on" : "Battle off"),
+          ),
       )
       .child(floor);
   }
