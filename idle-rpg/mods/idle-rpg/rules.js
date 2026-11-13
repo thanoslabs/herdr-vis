@@ -8,12 +8,14 @@
 // level a class gains earns it a skill point, spent on that class's skills,
 // which make every character on that class hit harder, faster or with a
 // chance of a critical blow. Killing a monster earns gold and counts towards
-// its kind. Levels are worked out from total experience, never stored; skill
-// ranks are stored, and points left are worked out from levels and ranks.
+// its kind. Gold buys looks in the shop, which also belong to a class: every
+// character with that class on wears its colourway. Levels are worked out from
+// total experience, never stored; skill ranks are stored, and points left are
+// worked out from levels and ranks.
 
 export const CLASSES = ["wizard", "healer", "warrior", "archer"];
 export const YOU = "you"; // the person's key in `sprites`, `xp` and as an open card
-export const STATE_VERSION = 2;
+export const STATE_VERSION = 3;
 // Each kind's HP, kept on a monster as `maxHp` when it turns up. The kinds are
 // the keys of MONSTERS in main.js, which draws them.
 export const MONSTER_HP = { slime: 100, ogre: 300, dragon: 500 };
@@ -56,6 +58,41 @@ export const ATTACK_TICKS = [12, 11, 10, 9, 8, 7];
 // go under MIN_ATTACK_TICKS, so the average stays the rank's).
 export const ATTACK_JITTER = 2;
 
+// The shop. Gold buys looks for a class (never an agent, which is short-lived):
+// everyone with that class on, agents and you alike, wears what the class has
+// equipped. Each kind of item has a catalogue per class, and each class keeps,
+// per kind, what it owns and which one it has on. Only colourways for now;
+// hats and other sprites would be more kinds in SHOP. The first item of every
+// catalogue is the class's default look: free, always owned. Buying is for
+// good (no refunds), and changing between owned items is free.
+export const DEFAULT_LOOK = "default";
+export const COLOUR_PRICES = [5, 10, 20]; // gold for each class's three colourways after the default, in order
+// Each class's colourways as [id, name]. The ids after the default, in this
+// order, must match LOOKS in tools/idle-rpg-sprites.py, which draws them.
+const COLOUR_NAMES = {
+  wizard: [[DEFAULT_LOOK, "Violet"], ["crimson", "Crimson"], ["moss", "Moss"], ["frost", "Frost"]],
+  healer: [[DEFAULT_LOOK, "Teal"], ["rose", "Rose"], ["sky", "Sky"], ["plum", "Plum"]],
+  warrior: [[DEFAULT_LOOK, "Steel"], ["cobalt", "Cobalt"], ["jade", "Jade"], ["ruby", "Ruby"]],
+  archer: [[DEFAULT_LOOK, "Forest"], ["scarlet", "Scarlet"], ["azure", "Azure"], ["dusk", "Dusk"]],
+};
+// Kinds of item: { name (for the shop), items: { <class>: [{ id, name, price }] } }.
+export const SHOP = {
+  colour: {
+    name: "Colours",
+    items: Object.fromEntries(
+      CLASSES.map((c) => [c, COLOUR_NAMES[c].map(([id, name], i) => ({ id, name, price: i ? COLOUR_PRICES[i - 1] : 0 }))]),
+    ),
+  },
+};
+export const SHOP_KINDS = Object.keys(SHOP);
+
+// Every picture a class has in art/, as what follows its name: standing,
+// walking, dangling, and the fighting poses (stance, wind-up, strike) facing
+// each way. main.js draws them; tools/idle-rpg-sprites.py draws each of them
+// in every colourway.
+export const POSES = ["f", "a1", "a2"];
+export const FRAMES = ["", "-walk-l", "-walk-r", "-rag-c", "-rag-l", "-rag-r", ...POSES.flatMap((p) => [`-${p}-l`, `-${p}-r`])];
+
 const MAX = Number.MAX_SAFE_INTEGER;
 const MAX_MONSTER_HP = 1e6; // the most a saved monster is believed to have
 
@@ -71,6 +108,9 @@ function finite(v) {
 function record(v) {
   return v !== null && typeof v === "object" && !Array.isArray(v);
 }
+
+// Whether `key` is `map`'s own, not something its prototype lends it.
+const has = (map, key) => Object.prototype.hasOwnProperty.call(map, key);
 
 // The own entries of a saved map whose values pass `keep`, minus any key that
 // would reach the object's prototype.
@@ -123,6 +163,12 @@ function noRanks(cls) {
   return Object.fromEntries((CLASS_SKILLS[cls] ?? []).map((k) => [k, 0]));
 }
 
+// Every class in its default look, owning nothing else:
+// { <class>: { <kind>: { owned: [DEFAULT_LOOK], equipped: DEFAULT_LOOK } } }.
+function noLooks() {
+  return Object.fromEntries(CLASSES.map((c) => [c, Object.fromEntries(SHOP_KINDS.map((k) => [k, { owned: [DEFAULT_LOOK], equipped: DEFAULT_LOOK }]))]));
+}
+
 // Fresh progress: what a new party starts with.
 export function newProgress() {
   return {
@@ -131,6 +177,7 @@ export function newProgress() {
     kills: Object.fromEntries(KINDS.map((k) => [k, 0])),
     xp: Object.fromEntries([YOU, ...CLASSES].map((k) => [k, 0])),
     skills: Object.fromEntries(CLASSES.map((c) => [c, noRanks(c)])),
+    looks: noLooks(),
   };
 }
 
@@ -235,6 +282,82 @@ export function slay(progress, monster) {
   progress.gold = Math.min(progress.gold + goldFor(monster.maxHp), MAX);
 }
 
+// What the shop sells of `kind` for class `cls`: [{ id, name, price }], the
+// default first (empty for an unknown class or kind).
+export function catalogue(cls, kind) {
+  return (has(SHOP, kind) && CLASSES.includes(cls) && SHOP[kind].items[cls]) || [];
+}
+
+// One item of a catalogue, or undefined.
+function itemOf(cls, kind, id) {
+  return catalogue(cls, kind).find((it) => it.id === id);
+}
+
+// Whether `cls` owns item `id` of `kind`. The default always counts as owned.
+export function owns(progress, cls, kind, id) {
+  if (!itemOf(cls, kind, id)) return false;
+  return id === DEFAULT_LOOK || Boolean(progress.looks?.[cls]?.[kind]?.owned?.includes(id));
+}
+
+// The id of the item of `kind` that `cls` has on: the default unless it has
+// put on something it owns.
+export function equipped(progress, cls, kind) {
+  const id = progress.looks?.[cls]?.[kind]?.equipped;
+  return owns(progress, cls, kind, id) ? id : DEFAULT_LOOK;
+}
+
+// Whether `cls` can buy item `id` of `kind`: it is for sale, not owned yet,
+// and the gold is there.
+export function canBuy(progress, cls, kind, id) {
+  const item = itemOf(cls, kind, id);
+  return Boolean(item) && !owns(progress, cls, kind, id) && count(progress.gold) >= item.price;
+}
+
+// Buys item `id` of `kind` for `cls` if it can: the price comes off the gold
+// and the class owns it for good. It is not put on. Returns whether it bought it.
+export function buy(progress, cls, kind, id) {
+  if (!canBuy(progress, cls, kind, id)) return false;
+  progress.gold = count(progress.gold) - itemOf(cls, kind, id).price;
+  const slot = (((progress.looks ??= {})[cls] ??= {})[kind] ??= { owned: [DEFAULT_LOOK], equipped: DEFAULT_LOOK });
+  slot.owned.push(id);
+  return true;
+}
+
+// Puts item `id` of `kind` on `cls`, free, if the class owns it and does not
+// have it on already. Returns whether anything changed.
+export function equip(progress, cls, kind, id) {
+  if (!owns(progress, cls, kind, id) || equipped(progress, cls, kind) === id) return false;
+  progress.looks[cls][kind].equipped = id; // owning it means the slot is there
+  return true;
+}
+
+// The name a class's pictures go by in art/ in colourway `colour`: the class
+// itself for the default ("wizard", so "wizard-walk-l.png"), else the class
+// and the colourway ("wizard-crimson", so "wizard-crimson-walk-l.png"). Add
+// one of FRAMES and ".png" for a file.
+// Anything that is not one of the class's colourways gets the default, and an
+// unknown class the first one, so no other string can end up in a path.
+export function lookArt(cls, colour) {
+  const c = CLASSES.includes(cls) ? cls : CLASSES[0];
+  return colour !== DEFAULT_LOOK && itemOf(c, "colour", colour) ? `${c}-${colour}` : c;
+}
+
+// A class's saved looks: per kind, the items it owns, in catalogue order with
+// the default always among them and anything unknown or repeated dropped,
+// and the one it has on, which falls back to the default if it is not owned.
+function looksOf(saved, cls) {
+  return Object.fromEntries(
+    SHOP_KINDS.map((kind) => {
+      const slot = record(saved) && has(saved, kind) && record(saved[kind]) ? saved[kind] : {};
+      const list = Array.isArray(slot.owned) ? slot.owned : [];
+      const owned = catalogue(cls, kind)
+        .map((it) => it.id)
+        .filter((id) => id === DEFAULT_LOOK || list.includes(id));
+      return [kind, { owned, equipped: owned.includes(slot.equipped) ? slot.equipped : DEFAULT_LOOK }];
+    }),
+  );
+}
+
 // The saved monster, or null if it is not one: { kind, hp, maxHp, id, slainAt? }.
 // An absurd max HP is cut down, and a time of death in the future is brought
 // back to now, so neither can leave a monster that never falls or never leaves.
@@ -259,7 +382,7 @@ function ranksOf(saved, cls, xp) {
 }
 
 // The saved state as this version keeps it, from whatever was read back:
-// older versions without the progress fields or skill ranks, or anything
+// older versions without the progress fields, skill ranks or looks, or anything
 // malformed. Never throws; a bad field falls back to its default, a bad entry
 // is dropped.
 //
@@ -285,5 +408,7 @@ export function loadState(saved, now = Date.now()) {
     xp,
     // version 1 had no skills: every rank starts at 0
     skills: Object.fromEntries(CLASSES.map((c) => [c, ranksOf(record(s.skills) ? s.skills[c] : undefined, c, xp[c])])),
+    // versions 1 and 2 had no shop: every class owns and wears its default
+    looks: Object.fromEntries(CLASSES.map((c) => [c, looksOf(record(s.looks) && has(s.looks, c) ? s.looks[c] : undefined, c)])),
   };
 }
