@@ -65,22 +65,29 @@ const CRITTER_Y = [16, FLOOR_H - 42];
 const CARD_W = 232;
 // Battle mode. Sizes are on-screen px (art px x 4, plus the outline).
 const MONSTERS = {
-  slime: { name: "Slime", w: 136, h: 104 },
-  ogre: { name: "Ogre", w: 200, h: 200 },
-  dragon: { name: "Dragon", w: 328, h: 264 },
+  slime: { name: "Slime", w: 136, h: 104, core: { x: 0, y: 44, r: 18, half: 60 } },
+  ogre: { name: "Ogre", w: 200, h: 200, core: { x: 0, y: 86, r: 24, half: 62 } },
+  dragon: { name: "Dragon", w: 328, h: 264, core: { x: 12, y: 74, r: 26, half: 84 } },
 };
+// `core` is the middle of the monster's bulk, where blows land: px right of
+// its centre line and above its feet, how far a blow may stray from it, and
+// half the bulk's width, which is how close a warrior stands. The picture is
+// often much wider than that (the dragon's head, wings and tail).
 const MONSTER_HP = 100;
 const ATTACK_MS = 3000; // each working agent hits once per beat, for 1 HP
 const RESPAWN_MS = 9000; // how long a fallen monster lies there before the next
 const MONSTER_Y = 108; // where its feet are on the floor
 const BAR_W = 120;
-const MELEE = 80; // how close to the monster's edge a warrior must be to reach it
+const MELEE = 90; // how close to the monster's bulk a warrior must be to reach it
+const SWORD = 44; // how far outside the bulk a warrior stands, so the swing lands on it
 const RANGE = 360; // how far the ranged classes stand from the monster: five characters
-// An attack plays in phases after each beat: 1 is the wind-up, 2 and 3 the
-// two halves of the strike or flight, 4 the impact, 0 rest. These are when
-// phases 2, 3, 4 and 0 begin, in ms.
-const STEPS = [220, 470, 720, 1150];
-const FLIGHT = STEPS[2] - STEPS[0];
+// An attack plays in phases, one TICK_STEP each: 1 is the wind-up, 2 and 3 the
+// two halves of the strike or flight, 4 the impact, 0 rest. Everyone starts a
+// different number of ticks into the beat, so the party does not move as one.
+const TICK_STEP = 250;
+const FLIGHT = TICK_STEP * 2;
+const STAGGER = 5; // how many different starting ticks there are
+const LAST_TICK = STAGGER - 1 + 4; // the tick on which the latest attacker's impact ends
 const BLINK_MS = 5200; // monsters blink this often
 const ROAR_MS = 14000; // and the ogre roars this often
 const MOVE = { duration: 700, easing: "ease-in-out" }; // walking between spots and the formation
@@ -125,7 +132,7 @@ export default class Rpg extends View {
     this.monster = saved.monster ?? null; // { kind, hp, id, slainAt? }
     this.slain = saved.slain ?? 0;
     this.unsaved = 0; // damage dealt since the last save
-    this.phase = 0; // where the current attack is: see STEPS
+    this.tick = null; // how many TICK_STEPs into the current beat's attacks; null between beats
     this.beat = 0;
     this.blink = false;
     this.roar = false;
@@ -210,20 +217,38 @@ export default class Rpg extends View {
   joins(W) {
     const kind = MONSTERS[this.monster?.kind];
     if (!this.fighting || !kind || !(this.monster.hp > 0)) return false;
-    return this.sprites[YOU] !== "warrior" || Math.abs(this.you.x - W / 2) - kind.w / 2 <= MELEE;
+    return this.sprites[YOU] !== "warrior" || Math.abs(this.you.x - (W / 2 + kind.core.x)) - kind.core.half <= MELEE;
   }
 
-  // Plays one attack: walks `phase` through 1, 2, 3, 4 and back to 0.
+  // Plays one beat of attacks: counts `tick` up, re-rendering on each.
   strike(cx) {
     const beat = (this.beat += 1);
-    this.phase = 1;
-    STEPS.forEach((ms, i) =>
-      cx.timer.after(ms, (cx) => {
+    this.tick = 0;
+    for (let i = 1; i <= LAST_TICK + 1; i++) {
+      cx.timer.after(i * TICK_STEP, (cx) => {
         if (beat !== this.beat) return;
-        this.phase = i === STEPS.length - 1 ? 0 : i + 2;
+        this.tick = i > LAST_TICK ? null : i;
         cx.notify();
-      }),
-    );
+      });
+    }
+  }
+
+  // A number from 0 to n - 1 for one attacker on this beat: the same all
+  // through the beat, different on the next.
+  roll(key, salt, n) {
+    let h = 2166136261 ^ Math.imul(this.beat + 1, 40503) ^ Math.imul(salt, 2246822519);
+    for (const ch of String(key)) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
+    // stir it, so that keys one character apart land far apart
+    h = Math.imul(h ^ (h >>> 16), 0x85ebca6b);
+    h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
+    return ((h ^ (h >>> 16)) >>> 0) % n;
+  }
+
+  // Which phase of its attack someone is in right now.
+  phaseOf(key) {
+    if (this.tick === null) return 0;
+    const k = this.tick - this.roll(key, 1, STAGGER);
+    return k < 0 || k > 3 ? 0 : k + 1;
   }
 
   // Where everyone stands for the fight: warriors beside the monster, the
@@ -240,10 +265,12 @@ export default class Rpg extends View {
       const i = melee ? count.melee++ : count.ranged++;
       const side = i % 2 ? 1 : -1; // left first
       const n = Math.floor(i / 2);
-      const out = half + (melee ? 34 : reach) + n * 62;
+      // Warriors close on the bulk itself and stand a little in front of the
+      // monster, so its picture does not hide them; the rest keep their range.
+      const x = melee ? mid + kind.core.x + side * (kind.core.half + SWORD + n * 62) : mid + side * (half + reach + n * 62);
       spots[a.address] = {
-        x: Math.round(clamp(mid + side * out, 36, W - 36)),
-        y: clamp(rows[n % rows.length], CRITTER_Y[0], CRITTER_Y[1] + 12),
+        x: Math.round(clamp(x, 36, W - 36)),
+        y: melee ? MONSTER_Y + 6 : clamp(rows[n % rows.length], CRITTER_Y[0], CRITTER_Y[1] + 12),
         dir: -side, // which way the monster is
       };
     }
@@ -260,8 +287,14 @@ export default class Rpg extends View {
     const c = who.cls;
     const d = who.dir;
     const side = d > 0 ? "r" : "l";
-    const flying = this.phase === 2 || this.phase === 3;
-    const hit = { x: Math.round(W / 2 - d * (kind.w / 2 - 44)), y: Math.round(MONSTER_Y - Math.min(kind.h * 0.45, 96)) };
+    const phase = this.phaseOf(who.key);
+    const flying = phase === 2 || phase === 3;
+    // blows land around the middle of the monster's bulk, a little different each time
+    const { x: cx0, y: cy0, r } = kind.core;
+    const hit = {
+      x: Math.round(W / 2 + cx0 + this.roll(who.key, 2, 2 * r + 1) - r),
+      y: Math.round(MONSTER_Y - cy0 + this.roll(who.key, 3, r + 1) - r / 2),
+    };
     const art = (name, w, h) => image(`${ART}/${name}.png`).w(w).h(h);
     const pop = (id, name, w, h, at, on) =>
       div()
@@ -285,16 +318,16 @@ export default class Rpg extends View {
     const from = (dx, dy) => ({ x: s.x + d * dx, y: s.y - dy });
 
     // the warrior swings its own sword; only the slash is extra
-    if (c === "warrior") return [pop("slash", `slash-${side}`, 32, 44, from(62, 24), this.phase === 2)];
-    if (c === "archer") return [shot(`arrow-${side}`, 44, 20, from(40, 22)), pop("hit", "spark", 20, 20, hit, this.phase === 4)];
-    if (c === "wizard") return [shot(`fireball-${side}`, 40, 32, from(46, 26)), pop("hit", "burst", 44, 44, hit, this.phase === 4)];
+    if (c === "warrior") return [pop("slash", `slash-${side}`, 32, 44, from(62, 24), phase === 2)];
+    if (c === "archer") return [shot(`arrow-${side}`, 44, 20, from(40, 22)), pop("hit", "spark", 20, 20, hit, phase === 4)];
+    if (c === "wizard") return [shot(`fireball-${side}`, 40, 32, from(46, 26)), pop("hit", "burst", 44, 44, hit, phase === 4)];
     // healer: the potion is lobbed, rising for the first half and falling for the second
     const lob = (el) =>
       el
         .id(`rpg-lob-${who.key}`)
-        .top(this.phase === 2 ? -44 : 0)
-        .transition("top", { duration: FLIGHT / 2, easing: this.phase === 2 ? "ease-out" : "ease-in" });
-    return [shot("potion", 28, 36, from(24, 40), lob), pop("hit", "splash", 52, 32, hit, this.phase === 4)];
+        .top(phase === 2 ? -44 : 0)
+        .transition("top", { duration: FLIGHT / 2, easing: phase === 2 ? "ease-out" : "ease-in" });
+    return [shot("potion", 28, 36, from(24, 40), lob), pop("hit", "splash", 52, 32, hit, phase === 4)];
   }
 
   // The monster and its health bar. `hits` is how many agents are attacking it.
@@ -336,7 +369,7 @@ export default class Rpg extends View {
             // and rises, the dragon's tail sways behind its body, and the ogre
             // and dragon breathe with their upper body while the feet stay
             // planted. The ogre now and then roars, and all blink.
-            .top(this.phase === 4 && hurt ? -4 : 0)
+            .top(this.struck && hurt ? -4 : 0)
             .transition("top", { duration: 90, easing: "ease-out" })
             .when(m.kind === "dragon", (el) => el.child(layer("tail").loop("top", { from: 0, to: 5, period: 2600 })))
             .child(layer(roaring ? "2" : m.kind === "slime" ? "base" : m.kind === "dragon" ? "body" : null))
@@ -553,7 +586,8 @@ export default class Rpg extends View {
     // picture (96px) so a weapon can reach out; a working agent winds up on
     // phase 1 and strikes on 2 and 3.
     const dir = this.at[a.address].dir;
-    const frame = !fighting || !(this.monster?.hp > 0) ? "f" : this.phase === 1 ? "a1" : this.phase === 2 || this.phase === 3 ? "a2" : "f";
+    const phase = this.phaseOf(a.address);
+    const frame = !fighting || !(this.monster?.hp > 0) ? "f" : phase === 1 ? "a1" : phase === 2 || phase === 3 ? "a2" : "f";
     const pose = this.fighting
       ? div().relative().w(72).h(72).child(div().absolute().left(dir > 0 ? 0 : -24).top(0).child(image(`${ART}/${c}-${frame}-${dir > 0 ? "r" : "l"}.png`).w(96).h(72)))
       : image(`${ART}/${c}.png`).w(72).h(72);
@@ -655,7 +689,7 @@ export default class Rpg extends View {
                   .top(0)
                   .child(
                     image(
-                      `${ART}/${c}-${!this.youFights ? "f" : this.phase === 1 ? "a1" : this.phase === 2 || this.phase === 3 ? "a2" : "f"}-${this.youDir > 0 ? "r" : "l"}.png`,
+                      `${ART}/${c}-${!this.youFights ? "f" : [0, "a1", "a2", "a2", 0][this.phaseOf(YOU)] || "f"}-${this.youDir > 0 ? "r" : "l"}.png`,
                     )
                       .w(96)
                       .h(72),
@@ -837,8 +871,9 @@ export default class Rpg extends View {
     const foeKind = this.battle && W >= 640 ? MONSTERS[this.monster?.kind] : null;
     this.fighting = Boolean(foeKind);
     this.at = foeKind ? this.formation(list, W, foeKind) : this.spots;
-    const youDir = you.x <= W / 2 ? 1 : -1; // which way the monster is from you
+    const youDir = you.x <= W / 2 + (foeKind?.core.x ?? 0) ? 1 : -1; // which way the monster is from you
     this.youFights = hits > 0 && this.joins(W);
+    this.struck = (this.youFights && this.phaseOf(YOU) === 4) || list.some((a) => a.status === "working" && this.phaseOf(a.address) === 4);
     this.youDir = youDir;
     const actors = [{ y: you.y, draw: () => [this.you_()] }, { y: MONSTER_Y, draw: () => this.foe(W, hits) }];
     if (this.youFights) actors.push({ y: FLOOR_H, draw: () => this.attack({ key: YOU, cls: this.sprites[YOU], x: you.x, y: you.y, dir: youDir }, W, foeKind) });
