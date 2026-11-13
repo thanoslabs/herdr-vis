@@ -1,19 +1,19 @@
-# RPG
+# Raid Party
 
 A castle rampart across the top of the window, in pixel art, staffed by a small adventuring party. You and every agent are stubby, dark-outlined characters in one of four classes (wizard, healer, warrior, archer), and what each agent's character is doing shows that agent's status. Behind the battlements the sky runs a full day and night every 20 minutes, with drifting clouds. Below it are the tabs and terminals; the standard Spaces and Agents sidebar is on the left.
 
-![RPG](preview.png)
+![Raid Party](preview.png)
 
 ![Battle mode in motion](battle.gif)
 
 ## What you see
 
 - **Sidebar (left, 268px):** Herdr's own sidebar, unchanged: brand bar, Spaces, Agents, footer.
-- **Scene (top of the rest, one third of the height, 230 to 560px):** a pixel-art scene at 4 screen pixels per art pixel. Back to front: a sky of night blue `#0b1230` with a tiled star field, a day-blue layer `#6db6ee` and five orange `#f2924e` horizon bands, each faded in and out by the time of day; a sun and a moon riding one circle half a turn apart and setting behind the wall; four clouds drifting left to right at 6 to 12 px/s, dimmer at night; a tiled snowy mountain range; 64px grey stone battlements with red banners and torches whose glow flickers and brightens at night; a 152px floor of tiled wooden planks with a table (scroll, potion, candle) and a barrel at the left. A dark tint lies over sky, wall and floor at night. A dark pill top-left reads "RPG" and a status summary.
+- **Scene (top of the rest, one third of the height, 230 to 560px):** a pixel-art scene at 4 screen pixels per art pixel. Back to front: a sky of night blue `#0b1230` with a tiled star field, a day-blue layer `#6db6ee` and five orange `#f2924e` horizon bands, each faded in and out by the time of day; a sun and a moon riding one circle half a turn apart and setting behind the wall; four clouds drifting left to right at 6 to 12 px/s, dimmer at night; a tiled snowy mountain range; 64px grey stone battlements with red banners and torches whose glow flickers and brightens at night; a 152px floor of tiled wooden planks with a table (scroll, potion, candle) and a barrel at the left. A dark tint lies over sky, wall and floor at night. A dark pill top-left reads "Raid Party" and a status summary.
 - **You (72×72):** one of the four classes, picked at random the first time and remembered, labelled "You".
 - **Agents (72×72):** one per agent, each a class picked at random when the agent first appears and remembered for that terminal. Each stands on a soft shadow with the program name and "space · tab" underneath, and a status bubble by its head.
 - **Tab bar (42px) and terminals:** Herdr's `tabs` mod, then the active tab with each pane as a card (radius 10, 1px border, `pane` header 30px).
-- **Theme `rpg`:** dark navy terminals (`#101c2c` on `#dbe7f3`), accent `#5cc8ff`.
+- **Theme `raid-party`:** dark navy terminals (`#101c2c` on `#dbe7f3`), accent `#5cc8ff`.
 
 ## How it behaves
 
@@ -37,14 +37,14 @@ A castle rampart across the top of the window, in pixel art, staffed by a small 
 
 ## Built from
 
-- `layouts/rpg.json`: root `row` (`titlebar: none`, theme `rpg`) of `sidebar` (copied from Herdr's `main` layout: `workspace-chrome`, `spaces`, `agents`) and `office`, a `column` of `scene` (block, `rpg` mod, props `{ inset: 16 }`, weight 1) and `work` (weight 2: `tabs` block, then the `tab: active` block with the `pane` header mod).
-- `mods/rpg/main.js`: one `View`. Props: `inset`, the sign's left edge in px (default 84 leaves room for macOS window buttons when the scene is in the top-left corner).
-- `herdr` functions: `agents`, `spaces`, `shared` / `setShared` (key `rpg.state`: `{ you, spots, sprites, seen, battle, monster, slain }`), `props`, `run("agent.focus")`.
+- `layouts/raid-party.json`: root `row` (`titlebar: none`, theme `raid-party`) of `sidebar` (copied from Herdr's `main` layout: `workspace-chrome`, `spaces`, `agents`) and `office`, a `column` of `scene` (block, `raid-party` mod, props `{ inset: 16 }`, weight 1) and `work` (weight 2: `tabs` block, then the `tab: active` block with the `pane` header mod).
+- `mods/raid-party/main.js`: one `View`. Props: `inset`, the sign's left edge in px (default 84 leaves room for macOS window buttons when the scene is in the top-left corner).
+- `herdr` functions: `agents`, `spaces`, `shared` / `setShared` (key `raid-party.state`: `{ you, spots, sprites, seen, battle, monster, slain }`), `props`, `run("agent.focus")`.
 - gpui-kit: absolute positioning, `on_mouse_down` / `on_mouse_move` / `on_mouse_up` / `on_hover` on the root, `transition("left" | "top")` for walking and falling, `loop` and `frames` for the status animations, `cx.timer.after` to end the walk bob.
-- `mods/rpg/art/`: scenery PNGs (`wall`, `floor`, `mountains`, `stars`, `sun`, `moon`, `cloud-a`, `cloud-b`, `banner`, `torch`, `table`, `barrel`, `wrench`), and per class `<class>.png`, `<class>-walk-{l,r}.png` and `<class>-rag-{c,l,r}.png` (dangling: straight, and sheared a few pixels each way). The class sprites are stubby 16×16 pixel art (big head, short body) with a one-pixel dark outline, on an 18×18 canvas so the outline fits. They are PNGs at 8 image pixels per sprite pixel (144px), drawn at 72px so each sprite pixel is 4×4 on screen and maps 1:1 on a retina display; the dangling frames are 22×22 (176px) drawn at 88px. SVG sprites rendered soft, so use PNG. Positions are rounded to whole pixels for the same reason.
-- **Sky clock:** `cx.timer.every(10000)` in `init` stores `Date.now()` and re-renders; the time of day is `now % 20min`, so every window agrees. Opacities and the sun, moon and cloud positions glide with 10s linear transitions between ticks. A cloud that wraps gets a new element id so it does not glide back across the sky. `tools/rpg-sprites.py` in the repo draws every PNG.
-- **Battle clock:** a second `cx.timer.every(3000)` in `init` counts working agents with `agents()` (plus you, if you can reach) and calls `fight(hits)`; on a hit it also starts a tick counter with nine `cx.timer.after` calls 250ms apart, each re-rendering once; every attacker's phase is that tick minus its own starting tick, so staggering costs no extra renders. Blinks and the ogre's roar are two more `cx.timer.every` timers that flip a flag on and off. Every motion inside a phase is a native transition (`left`/`top` for flight, `opacity` for impacts, with a 20ms fade-in and 350ms fade-out). The monster (`{ kind, hp, id, slainAt }`), the toggle and the kill count live in the shared state; HP is saved every 10 points and on a kill rather than on every hit. Monster art is drawn from ellipses and polygons, the fighting poses and attack art (`arrow`, `fireball`, `slash` in `-l`/`-r` pairs, `burst`, `potion`, `splash`) from pixel grids, all in `tools/rpg-sprites.py`.
-- `themes/rpg.json`.
+- `mods/raid-party/art/`: scenery PNGs (`wall`, `floor`, `mountains`, `stars`, `sun`, `moon`, `cloud-a`, `cloud-b`, `banner`, `torch`, `table`, `barrel`, `wrench`), and per class `<class>.png`, `<class>-walk-{l,r}.png` and `<class>-rag-{c,l,r}.png` (dangling: straight, and sheared a few pixels each way). The class sprites are stubby 16×16 pixel art (big head, short body) with a one-pixel dark outline, on an 18×18 canvas so the outline fits. They are PNGs at 8 image pixels per sprite pixel (144px), drawn at 72px so each sprite pixel is 4×4 on screen and maps 1:1 on a retina display; the dangling frames are 22×22 (176px) drawn at 88px. SVG sprites rendered soft, so use PNG. Positions are rounded to whole pixels for the same reason.
+- **Sky clock:** `cx.timer.every(10000)` in `init` stores `Date.now()` and re-renders; the time of day is `now % 20min`, so every window agrees. Opacities and the sun, moon and cloud positions glide with 10s linear transitions between ticks. A cloud that wraps gets a new element id so it does not glide back across the sky. `tools/raid-party-sprites.py` in the repo draws every PNG.
+- **Battle clock:** a second `cx.timer.every(3000)` in `init` counts working agents with `agents()` (plus you, if you can reach) and calls `fight(hits)`; on a hit it also starts a tick counter with nine `cx.timer.after` calls 250ms apart, each re-rendering once; every attacker's phase is that tick minus its own starting tick, so staggering costs no extra renders. Blinks and the ogre's roar are two more `cx.timer.every` timers that flip a flag on and off. Every motion inside a phase is a native transition (`left`/`top` for flight, `opacity` for impacts, with a 20ms fade-in and 350ms fade-out). The monster (`{ kind, hp, id, slainAt }`), the toggle and the kill count live in the shared state; HP is saved every 10 points and on a kill rather than on every hit. Monster art is drawn from ellipses and polygons, the fighting poses and attack art (`arrow`, `fireball`, `slash` in `-l`/`-r` pairs, `burst`, `potion`, `splash`) from pixel grids, all in `tools/raid-party-sprites.py`.
+- `themes/raid-party.json`.
 
 ## Watch out
 
@@ -57,7 +57,7 @@ A castle rampart across the top of the window, in pixel art, staffed by a small 
 
 ## Done when
 
-- `herdr-app check mods/rpg` passes and `herdr-app status` shows no errors with the layout shown.
+- `herdr-app check mods/raid-party` passes and `herdr-app status` shows no errors with the layout shown.
 - With battle mode on and an agent working, the monster's HP drops by one per working agent every 3 seconds, and a new monster replaces a slain one.
 - Each running agent appears as an adventurer with its program name, and its bubble matches its status.
 - Clicking the floor walks you there; restarting the app keeps you there.

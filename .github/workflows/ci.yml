@@ -45,6 +45,6 @@ jobs:
       - name: Install into an empty Herdr home
         run: |
           home="$(mktemp -d)"
-          HERDR_APP_HOME="$home" ./install.sh rpg
-          test -f "$home/layouts/rpg.json"
-          test -f "$home/mods/rpg/main.js"
+          HERDR_APP_HOME="$home" ./install.sh raid-party
+          test -f "$home/layouts/raid-party.json"
+          test -f "$home/mods/raid-party/main.js"
