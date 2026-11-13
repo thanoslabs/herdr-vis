@@ -374,3 +374,258 @@ icon("done.png", [                                      # done: finished while y
     ".ggggg.",
     "..gg...",
 ], {"g": "#3fbf6f", "w": "#ffffff"})
+
+# ---- Monsters (battle mode): drawn from shapes, outlined like the sprites ----
+class Pix:
+    def __init__(self, w, h):
+        self.w, self.h = w + 2, h + 2                 # 1px margin for the outline
+        self.g = [[None] * self.w for _ in range(self.h)]
+    def px(self, x, y, c):
+        if 0 <= x < self.w - 2 and 0 <= y < self.h - 2: self.g[y + 1][x + 1] = c
+    def rect(self, x, y, w, h, c):
+        for j in range(h):
+            for i in range(w): self.px(x + i, y + j, c)
+    def ell(self, cx, cy, rx, ry, c):
+        for y in range(int(cy - ry) - 1, int(cy + ry) + 2):
+            for x in range(int(cx - rx) - 1, int(cx + rx) + 2):
+                if ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 <= 1.0: self.px(x, y, c)
+    def poly(self, pts, c):
+        ys = [p[1] for p in pts]
+        for y in range(int(min(ys)), int(max(ys)) + 1):
+            xs = []
+            for (x1, y1), (x2, y2) in zip(pts, pts[1:] + pts[:1]):
+                if y1 == y2: continue
+                if min(y1, y2) <= y + 0.5 < max(y1, y2): xs.append(x1 + (y + 0.5 - y1) * (x2 - x1) / (y2 - y1))
+            xs.sort()
+            for a, b in zip(xs[::2], xs[1::2]):
+                for x in range(int(round(a)), int(round(b)) + 1): self.px(x, y, c)
+    # `keep(x, y)` saves only part of the picture (art coordinates): the part
+    # that rises and falls when the monster breathes.
+    def save(self, name, outline=True, keep=None):
+        g, o = self.g, [r[:] for r in self.g]
+        for y in range(self.h if outline else 0):
+            for x in range(self.w):
+                if g[y][x] is None and any(0 <= y+j < self.h and 0 <= x+i < self.w and g[y+j][x+i] for i, j in ((1,0),(-1,0),(0,1),(0,-1))):
+                    o[y][x] = OUTLINE
+        if keep:
+            o = [[c if keep(x - 1, y - 1) else None for x, c in enumerate(row)] for y, row in enumerate(o)]
+        save(name, o)
+
+K, WHITE, BONE = "#1b2233", "#ffffff", "#f4ecd8"
+
+def slime(name, lids=False, keep=None):                   # 32x24
+    p = Pix(32, 24)
+    B, Bd, Bl = "#4fb3e0", "#3586b8", "#9bdcf5"
+    if lids:
+        p.rect(9, 12, 3, 4, B); p.rect(19, 12, 3, 4, B)
+        return p.save(name, outline=False)
+    p.ell(16, 13, 14, 10, Bd); p.rect(2, 13, 29, 10, Bd)
+    p.ell(15.5, 12, 13, 9, B); p.rect(3, 12, 26, 9, B)
+    p.rect(2, 21, 29, 2, Bd)
+    p.ell(9, 7, 3, 2, Bl); p.px(13, 5, Bl)
+    p.rect(9, 12, 3, 5, K); p.rect(19, 12, 3, 5, K); p.px(9, 12, WHITE); p.px(19, 12, WHITE)
+    p.rect(13, 18, 5, 1, K)
+    p.save(name, keep=keep)
+
+def ogre(name, roar=False, lids=False, keep=None):        # 48x48
+    p = Pix(48, 48)
+    G, Gd, Gl = "#6f9e3f", "#4f7a2c", "#93bf5a"
+    Wd, Wl, Br = "#7a5230", "#9a6639", "#5a3d22"
+    if lids:
+        p.rect(16, 11, 4, 2, G); p.rect(27, 11, 4, 2, G); p.rect(16, 13, 4, 1, Gd); p.rect(27, 13, 4, 1, Gd)
+        return p.save(name, outline=False)
+    p.poly([(38, 24), (43, 24), (47, 5), (39, 2)], Wd)    # club, raised
+    p.poly([(40, 22), (42, 22), (45, 6), (41, 4)], Wl)
+    for x, y in ((39, 8), (46, 12), (40, 14), (45, 4)): p.rect(x, y, 2, 2, BONE)
+    p.rect(14, 38, 8, 8, Gd); p.rect(26, 38, 8, 8, Gd)    # legs
+    p.rect(12, 44, 11, 3, Br); p.rect(25, 44, 11, 3, Br)
+    p.ell(24, 30, 15, 12, Gd); p.ell(23, 29, 14, 11, G); p.ell(24, 32, 9, 7, Gl)
+    p.poly([(11, 36), (37, 36), (34, 43), (24, 40), (14, 43)], Wl); p.rect(10, 35, 28, 2, Br); p.rect(22, 34, 4, 4, "#f2c14e")
+    p.ell(7, 29, 5, 8, Gd); p.ell(7, 28, 4, 7, G); p.ell(7, 38, 4, 4, G)          # left arm, fist
+    p.ell(41, 29, 5, 7, Gd); p.ell(40, 28, 4, 6, G); p.ell(41, 23, 4, 4, G)       # right arm, fist on the club
+    p.poly([(10, 8), (14, 12), (13, 18)], Gd); p.poly([(38, 8), (34, 12), (35, 18)], Gd)  # ears
+    p.ell(24, 14, 11, 10, Gd); p.ell(23, 13, 10, 9, G)
+    p.rect(15, 9, 17, 2, Gd)                              # brow
+    p.rect(16, 11, 4, 3, "#ffe27a"); p.rect(27, 11, 4, 3, "#ffe27a"); p.px(18, 12, K); p.px(28, 12, K)
+    p.rect(22, 13, 4, 4, Gd); p.px(22, 16, K); p.px(25, 16, K)
+    if roar:                                              # jaw dropped wide
+        p.rect(15, 10, 17, 1, Gd)
+        p.rect(15, 18, 17, 8, "#3a1f1f"); p.rect(18, 23, 11, 3, "#c94040")
+        p.rect(16, 18, 2, 4, BONE); p.rect(29, 18, 2, 4, BONE); p.rect(20, 18, 2, 2, BONE); p.rect(25, 18, 2, 2, BONE)
+        p.rect(17, 24, 2, 2, BONE); p.rect(28, 24, 2, 2, BONE)
+    else:
+        p.rect(16, 19, 15, 3, "#3a1f1f"); p.rect(17, 17, 2, 4, BONE); p.rect(28, 17, 2, 4, BONE)
+    p.save(name, keep=keep)
+
+def dragon(name, part=None, lids=False, keep=None):       # 80x64, facing left; part: "tail" or "body" alone
+    p = Pix(80, 64)
+    R, Rd, Rl = "#c23b3b", "#8f2626", "#e06a5a"
+    Wg, Wm, Cr = "#7a1f2b", "#b5483f", "#f2c98a"
+    if lids:
+        p.rect(17, 12, 4, 3, R); p.rect(17, 15, 4, 1, Rd)
+        return p.save(name, outline=False)
+    if part != "body":
+        p.poly([(54, 46), (72, 36), (79, 22), (80, 26), (76, 40), (60, 56)], Rd)   # tail
+        p.poly([(77, 22), (80, 14), (80, 24)], BONE)
+    if part == "tail": return p.save(name)
+    p.poly([(44, 34), (52, 6), (62, 14), (70, 4), (76, 26), (62, 38)], Wg)          # far wing
+    p.ell(44, 45, 20, 13, Rd); p.ell(43, 44, 19, 12, R); p.ell(40, 51, 14, 5, Cr)   # body, belly
+    p.rect(30, 52, 8, 9, Rd); p.rect(50, 52, 8, 9, Rd)                              # legs
+    p.rect(27, 60, 12, 3, Rd); p.rect(47, 60, 12, 3, Rd)
+    for x in (27, 31, 35, 47, 51, 55): p.px(x, 62, BONE)
+    p.poly([(22, 20), (34, 18), (42, 38), (28, 44)], R)                             # neck
+    p.poly([(22, 22), (26, 21), (32, 42), (28, 44)], Cr)
+    for i in range(5): p.rect(22 + i, 24 + i * 4, 4, 1, "#d9a868")
+    for x, y in ((34, 14), (38, 22), (42, 28), (48, 28), (54, 30), (60, 34)):       # back spikes
+        p.poly([(x, y + 5), (x + 2, y), (x + 5, y + 5)], BONE)
+    p.poly([(40, 36), (46, 8), (58, 16), (66, 2), (72, 22), (58, 36)], Wm)          # near wing
+    p.poly([(46, 8), (48, 10), (44, 34), (40, 36)], Rd); p.poly([(66, 2), (68, 4), (60, 34), (58, 36)], Rd)
+    p.ell(19, 17, 11, 7, Rd); p.ell(18, 16, 10, 6, R)                               # head
+    p.rect(3, 14, 14, 8, R); p.rect(3, 14, 14, 1, Rl); p.rect(2, 16, 2, 5, R)       # snout
+    p.rect(5, 22, 16, 3, Rd)                                                        # jaw
+    for x in (6, 9, 12, 15): p.px(x, 22, WHITE)
+    p.px(4, 16, K); p.rect(17, 12, 4, 4, "#ffe27a"); p.rect(18, 12, 1, 4, K)
+    p.poly([(23, 12), (31, 3), (27, 14)], BONE); p.poly([(19, 10), (24, 2), (22, 11)], BONE)  # horns
+    p.save(name, keep=keep)
+
+# Each monster's whole picture, the pieces that move on their own, and eyelids
+# to lay on top. Moving a piece over a still one never shows a ghost behind it,
+# which easing between two whole frames did.
+slime("monster-slime.png"); slime("monster-slime-blink.png", lids=True)
+slime("monster-slime-base.png", keep=lambda x, y: y >= 19)          # the foot stays put (below the mouth)
+slime("monster-slime-top.png", keep=lambda x, y: y < 19)            # the dome sinks into it and rises
+ogre("monster-ogre.png"); ogre("monster-ogre-2.png", roar=True); ogre("monster-ogre-blink.png", lids=True)
+ogre("monster-ogre-top.png", keep=lambda x, y: y < 31)              # head, shoulders, arms: breathing
+dragon("monster-dragon.png"); dragon("monster-dragon-blink.png", lids=True)
+dragon("monster-dragon-tail.png", part="tail")                      # sways behind the body
+dragon("monster-dragon-body.png", part="body")
+dragon("monster-dragon-top.png", part="body", keep=lambda x, y: y < 38)  # head, neck, wings: breathing
+
+# ---- Attacks (battle mode). "-r" flies or faces right, "-l" is its mirror. ----
+def both(name, rows, pal):
+    icon(f"{name}-r.png", rows, pal)
+    icon(f"{name}-l.png", [r[::-1] for r in rows], pal)
+
+both("arrow", [
+    "f......A.",
+    "fddddddAA",
+    "f......A.",
+], {"f": "#f4ecd8", "d": "#7a5230", "A": "#dfe6ee"})
+both("fireball", [
+    "...ooo..",
+    ".yooyyo.",
+    "royyWWyo",
+    "royyWWyo",
+    ".yooyyo.",
+    "...ooo..",
+], {"r": "#e2552f", "o": "#ff9d3c", "y": "#ffe27a", "W": "#ffffff"})
+both("slash", [
+    ".WW...",
+    "...WW.",
+    "....WW",
+    "....WW",
+    ".....W",
+    "....WW",
+    "....WW",
+    "...WW.",
+    ".WW...",
+], {"W": "#ffffff"})
+icon("burst.png", [
+    "....y....",
+    ".y.yoy.y.",
+    "..yoWoy..",
+    ".yoWWWoy.",
+    "yoWWWWWoy",
+    ".yoWWWoy.",
+    "..yoWoy..",
+    ".y.yoy.y.",
+    "....y....",
+], {"o": "#ff9d3c", "y": "#ffe27a", "W": "#ffffff"})
+icon("potion.png", [
+    ".bbb.",
+    "..w..",
+    ".www.",
+    "wgggw",
+    "wgGgw",
+    "wgggw",
+    ".www.",
+], {"b": "#7a5230", "w": "#dff3ee", "g": "#3fbf8f", "G": "#9af0cf"})
+icon("splash.png", [
+    "g.........g",
+    "..g..g..g..",
+    ".g.ggGgg.g.",
+    "..gGGGGGg..",
+    ".ggGGGGGgg.",
+    "..ggggggg..",
+], {"g": "#3fbf8f", "G": "#9af0cf"})
+
+# ---- Fighting poses (battle mode), on a 22x16 grid so a weapon can reach out.
+# Drawn attacking to the right: "f" is the stance, "a1" the wind-up, "a2" the
+# strike. "-l" is the mirror image, for attacking to the left.
+def pose(cls, tag, rows):
+    pal = {**COMMON, **SPR[cls][0], "#": OUTLINE}
+    rows = [r.ljust(22, ".") for r in rows]
+    assert len(rows) == 16 and all(len(r) == 22 for r in rows), (cls, tag, [len(r) for r in rows])
+    icon(f"{cls}-{tag}-r.png", rows, pal)
+    icon(f"{cls}-{tag}-l.png", [r[::-1] for r in rows], pal)
+
+def swap(rows, changes):
+    rows = list(rows)
+    for y, text in changes.items(): rows[y] = text
+    return rows
+
+def dots(rows, pixels):
+    g = [list(r.ljust(22, ".")) for r in rows]
+    for x, y, ch in pixels: g[y][x] = ch
+    return ["".join(r) for r in g]
+
+W = SPR["warrior"][1]
+pose("warrior", "f", W)
+pose("warrior", "a1", swap(W, {            # sword held high
+    0: ".............A..", 1: ".......pp....A..", 2: "......ppp....A..", 3: ".....aaaaaa..A..",
+    4: "....aaAAAAaa.A..", 5: "....aaaaaaaa.A..", 6: "....askaaksaggg.", 7: "....assssssa.s..",
+    8: ".....ssssss.a...", 9: "....AaaaaaaAa...", 10: ".uuuuaaaaaap....", 11: ".ugguaaaaaap....",
+    12: ".ugguddgdddp....",
+}))
+pose("warrior", "a2", swap(W, {            # swung level, at full reach
+    2: "......ppp.......", 3: ".....aaaaaa.....", 4: "....aaAAAAaa....", 5: "....aaaaaaaa....",
+    6: "....askaaksa....", 7: "....assssssa....", 8: ".....ssssss.....", 9: "....AaaaaaaA..g.",
+    10: ".uuuuaaaaaapasgAAAAAAA", 11: ".ugguaaaaaap..g.", 12: ".ugguddgdddp....",
+}))
+
+A = SPR["archer"][1]
+SPR["archer"][0]["A"] = "#dfe6ee"  # arrowhead
+pose("archer", "f", A)
+pose("archer", "a1", swap(A, {             # bow drawn, arrow nocked
+    5: "....ddssssdd..d.", 6: "....dskssksd..cd", 7: "....dssssssd..cd", 8: ".....ssssss..c..d",
+    9: ".cc..nnnnnn..c..d", 10: ".qq.nndnnnnnsddddA", 11: ".qqsnnndnnnn.c..d", 12: ".qq.ddddgddd.c.d",
+    13: "....NNNNNNNN..cd", 14: ".....dd..dd...d.",
+}))
+pose("archer", "a2", swap(A, {             # loosed
+    5: "....ddssssdd..d.", 6: "....dskssksd..cd", 7: "....dssssssd..cd", 8: ".....ssssss...c.d",
+    9: ".cc..nnnnnn...c.d", 10: ".qq.nndnnnnns.c.d", 11: ".qqsnnndnnnn..c.d", 12: ".qq.ddddgddd..cd",
+    13: "....NNNNNNNN..cd", 14: ".....dd..dd...d.",
+}))
+
+Z = SPR["wizard"][1]
+pose("wizard", "f", Z)
+pose("wizard", "a1", swap(Z, {             # staff raised
+    0: ".............c..", 1: ".......hh...cCc.", 2: "......hhhh...c..", 3: "......hyhh...w..",
+    4: ".....gggggg..w..", 5: "....hhhhhhhh.w..", 6: ".....ssssss..w..", 7: ".....skssks..w..",
+    8: ".....bssssb..w..", 9: ".....bbbbbb.sw..", 10: "....rrbbbbrrrw..", 11: "...srrrbbrrr....",
+    12: "....rrrRRrrr....", 13: "....gggggggg....", 14: ".....dd..dd.....",
+}))
+pose("wizard", "a2", swap(Z, {             # staff thrust out
+    2: "......hhhh......", 3: "......hyhh......", 4: ".....gggggg.....", 5: "....hhhhhhhh....",
+    6: ".....ssssss.....", 7: ".....skssks.....", 8: ".....bssssb........c..", 9: ".....bbbbbb.swwwwwcCc.",
+    10: "....rrbbbbrrr......c..", 11: "...srrrbbrrr....", 12: "....rrrRRrrr....",
+    13: "....gggggggg....", 14: ".....dd..dd.....",
+}))
+
+# The healer throws with the free hand, so its stance is the mirror of the
+# everyday sprite: staff on the far side, free hand toward the monster.
+H = [r[::-1] for r in SPR["healer"][1]]
+SPR["healer"][0]["P"] = "#3fbf8f"
+pose("healer", "f", H)
+pose("healer", "a1", dots(H, [(12, 10, "."), (12, 9, "r"), (13, 8, "s"), (13, 5, "h"), (13, 6, "P"), (14, 6, "P"), (13, 7, "P"), (14, 7, "P")]))  # potion held up
+pose("healer", "a2", dots(H, [(13, 10, "r"), (14, 10, "s")]))                                                                         # arm flung out
