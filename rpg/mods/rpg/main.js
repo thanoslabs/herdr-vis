@@ -307,8 +307,14 @@ export default class Rpg extends View {
     const dead = m.hp <= 0;
     const hurt = hits > 0 && !dead;
     const roaring = m.kind === "ogre" && this.roar;
-    const breathes = !dead && !roaring && m.kind !== "slime";
     const lids = this.blink && !dead && !roaring;
+    // one piece of the monster's art, laid over the whole picture's box
+    const layer = (part) =>
+      div()
+        .absolute()
+        .left(0)
+        .top(0)
+        .child(image(`${ART}/monster-${m.kind}${part ? `-${part}` : ""}.png`).w(kind.w).h(kind.h));
     const tone = m.hp > 50 ? "#4cd47b" : m.hp > 20 ? "#ffd166" : "#ff5d5d";
     return [
       div()
@@ -324,36 +330,23 @@ export default class Rpg extends View {
             .relative()
             .w(kind.w)
             .h(kind.h)
-            // It recoils a little when a blow lands. Otherwise the slime
-            // wobbles and the dragon's tail sways (easing between two frames),
-            // the ogre now and then roars, and all blink. The ogre and dragon
-            // breathe: their upper body is a second picture that rises a few
-            // pixels over the still one, so the feet stay planted.
+            // It recoils a little when a blow lands. Otherwise each monster
+            // is a still picture with pieces that move over or behind it, so
+            // nothing ever shows through: the slime's dome sinks into its foot
+            // and rises, the dragon's tail sways behind its body, and the ogre
+            // and dragon breathe with their upper body while the feet stay
+            // planted. The ogre now and then roars, and all blink.
             .top(this.phase === 4 && hurt ? -4 : 0)
             .transition("top", { duration: 90, easing: "ease-out" })
-            .child(image(`${ART}/monster-${m.kind}${roaring ? "-2" : ""}.png`).w(kind.w).h(kind.h))
-            .when(m.kind !== "ogre", (el) =>
+            .when(m.kind === "dragon", (el) => el.child(layer("tail").loop("top", { from: 0, to: 5, period: 2600 })))
+            .child(layer(roaring ? "2" : m.kind === "slime" ? "base" : m.kind === "dragon" ? "body" : null))
+            .when(!roaring, (el) =>
               el.child(
-                div()
-                  .absolute()
-                  .left(0)
-                  .top(0)
-                  .loop("opacity", { from: 0, to: 1, period: m.kind === "dragon" ? 2400 : 1700 })
-                  .child(image(`${ART}/monster-${m.kind}-2.png`).w(kind.w).h(kind.h)),
+                layer("top")
+                  .loop("top", m.kind === "slime" ? { from: 0, to: 8, period: 1700 } : { from: 0, to: -3, period: m.kind === "dragon" ? 3200 : 2600 })
+                  .when(lids, (top) => top.child(layer("blink"))),
               ),
-            )
-            .when(breathes, (el) =>
-              el.child(
-                div()
-                  .absolute()
-                  .left(0)
-                  .top(0)
-                  .loop("top", { from: 0, to: -3, period: m.kind === "dragon" ? 3200 : 2600 })
-                  .child(image(`${ART}/monster-${m.kind}-top.png`).w(kind.w).h(kind.h))
-                  .when(lids, (inner) => inner.child(div().absolute().left(0).top(0).child(image(`${ART}/monster-${m.kind}-blink.png`).w(kind.w).h(kind.h)))),
-              ),
-            )
-            .when(lids && !breathes, (el) => el.child(div().absolute().left(0).top(0).child(image(`${ART}/monster-${m.kind}-blink.png`).w(kind.w).h(kind.h)))),
+            ),
         ),
       v_flex()
         .absolute()

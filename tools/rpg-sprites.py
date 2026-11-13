@@ -413,20 +413,19 @@ class Pix:
 
 K, WHITE, BONE = "#1b2233", "#ffffff", "#f4ecd8"
 
-def slime(name, squash=False, lids=False):                # 32x24; squash is the low half of its wobble
+def slime(name, lids=False, keep=None):                   # 32x24
     p = Pix(32, 24)
     B, Bd, Bl = "#4fb3e0", "#3586b8", "#9bdcf5"
     if lids:
         p.rect(9, 12, 3, 4, B); p.rect(19, 12, 3, 4, B)
         return p.save(name, outline=False)
-    d = 3 if squash else 0
-    p.ell(16, 13 + d, 14 + d / 3, 10 - d, Bd); p.rect(2 - (1 if d else 0), 13 + d, 29 + (2 if d else 0), 10 - d, Bd)
-    p.ell(15.5, 12 + d, 13 + d / 3, 9 - d, B); p.rect(3 - (1 if d else 0), 12 + d, 26 + (2 if d else 0), 9 - d, B)
-    p.rect(2 - (1 if d else 0), 21, 29 + (2 if d else 0), 2, Bd)
-    p.ell(9, 7 + d, 3, 2, Bl); p.px(13, 5 + d, Bl)
+    p.ell(16, 13, 14, 10, Bd); p.rect(2, 13, 29, 10, Bd)
+    p.ell(15.5, 12, 13, 9, B); p.rect(3, 12, 26, 9, B)
+    p.rect(2, 21, 29, 2, Bd)
+    p.ell(9, 7, 3, 2, Bl); p.px(13, 5, Bl)
     p.rect(9, 12, 3, 5, K); p.rect(19, 12, 3, 5, K); p.px(9, 12, WHITE); p.px(19, 12, WHITE)
     p.rect(13, 18, 5, 1, K)
-    p.save(name)
+    p.save(name, keep=keep)
 
 def ogre(name, roar=False, lids=False, keep=None):        # 48x48
     p = Pix(48, 48)
@@ -458,16 +457,17 @@ def ogre(name, roar=False, lids=False, keep=None):        # 48x48
         p.rect(16, 19, 15, 3, "#3a1f1f"); p.rect(17, 17, 2, 4, BONE); p.rect(28, 17, 2, 4, BONE)
     p.save(name, keep=keep)
 
-def dragon(name, sway=False, lids=False, keep=None):                 # 80x64, facing left; sway is the tail swung a little lower
+def dragon(name, part=None, lids=False, keep=None):       # 80x64, facing left; part: "tail" or "body" alone
     p = Pix(80, 64)
     R, Rd, Rl = "#c23b3b", "#8f2626", "#e06a5a"
     Wg, Wm, Cr = "#7a1f2b", "#b5483f", "#f2c98a"
     if lids:
         p.rect(17, 12, 4, 3, R); p.rect(17, 15, 4, 1, Rd)
         return p.save(name, outline=False)
-    t = 4 if sway else 0
-    p.poly([(54, 46), (72, 36 + t // 2), (79, 22 + t), (80, 26 + t), (76, 40 + t // 2), (60, 56)], Rd)  # tail
-    p.poly([(77, 22 + t), (80, 14 + t), (80, 24 + t)], BONE)
+    if part != "body":
+        p.poly([(54, 46), (72, 36), (79, 22), (80, 26), (76, 40), (60, 56)], Rd)   # tail
+        p.poly([(77, 22), (80, 14), (80, 24)], BONE)
+    if part == "tail": return p.save(name)
     p.poly([(44, 34), (52, 6), (62, 14), (70, 4), (76, 26), (62, 38)], Wg)          # far wing
     p.ell(44, 45, 20, 13, Rd); p.ell(43, 44, 19, 12, R); p.ell(40, 51, 14, 5, Cr)   # body, belly
     p.rect(30, 52, 8, 9, Rd); p.rect(50, 52, 8, 9, Rd)                              # legs
@@ -488,16 +488,18 @@ def dragon(name, sway=False, lids=False, keep=None):                 # 80x64, fa
     p.poly([(23, 12), (31, 3), (27, 14)], BONE); p.poly([(19, 10), (24, 2), (22, 11)], BONE)  # horns
     p.save(name, keep=keep)
 
-# Each monster: its picture, a second frame it eases to and from (the slime's
-# wobble, the dragon's tail, the ogre's roar), and eyelids to lay on top.
-slime("monster-slime.png"); slime("monster-slime-2.png", squash=True); slime("monster-slime-blink.png", lids=True)
+# Each monster's whole picture, the pieces that move on their own, and eyelids
+# to lay on top. Moving a piece over a still one never shows a ghost behind it,
+# which easing between two whole frames did.
+slime("monster-slime.png"); slime("monster-slime-blink.png", lids=True)
+slime("monster-slime-base.png", keep=lambda x, y: y >= 19)          # the foot stays put (below the mouth)
+slime("monster-slime-top.png", keep=lambda x, y: y < 19)            # the dome sinks into it and rises
 ogre("monster-ogre.png"); ogre("monster-ogre-2.png", roar=True); ogre("monster-ogre-blink.png", lids=True)
-dragon("monster-dragon.png"); dragon("monster-dragon-2.png", sway=True); dragon("monster-dragon-blink.png", lids=True)
-# Breathing: the head, shoulders and arms (the ogre) or the head, neck and wings
-# (the dragon) as their own picture, which rises a little over the still body.
-ogre("monster-ogre-top.png", keep=lambda x, y: y < 31)
-dragon("monster-dragon-top.png", keep=lambda x, y: y < 38 and not (x >= 74 or (x >= 70 and y >= 28)))
-
+ogre("monster-ogre-top.png", keep=lambda x, y: y < 31)              # head, shoulders, arms: breathing
+dragon("monster-dragon.png"); dragon("monster-dragon-blink.png", lids=True)
+dragon("monster-dragon-tail.png", part="tail")                      # sways behind the body
+dragon("monster-dragon-body.png", part="body")
+dragon("monster-dragon-top.png", part="body", keep=lambda x, y: y < 38)  # head, neck, wings: breathing
 
 # ---- Attacks (battle mode). "-r" flies or faces right, "-l" is its mirror. ----
 def both(name, rows, pal):
