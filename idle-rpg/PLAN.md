@@ -1,6 +1,6 @@
 # Idle RPG: plan
 
-Planning notes for growing this layout from a visualizer with a battle mode into an idle RPG. Nothing here is built yet. "Decided" items come from the repo owner; "Proposed" items are suggestions that still need a yes.
+Planning notes for growing this layout from a visualizer with a battle mode into an idle RPG. Steps 1 and 2 of the proposed order (bookkeeping and experience) are built; the rest is not. "Decided" items come from the repo owner; "Default" items were chosen while building and are constants in `mods/idle-rpg/rules.js`, easy to retune; "Proposed" items are suggestions that still need a yes.
 
 ## Principles
 
@@ -11,24 +11,30 @@ Planning notes for growing this layout from a visualizer with a battle mode into
 
 ### Player experience
 
-- The player has their own experience and level.
+- The player has their own experience and level. **Built.**
 - What player levels unlock is **not decided yet** (parked).
+- Default: the player earns 1 XP per point of damage dealt by anyone in the party, their own blows included (`PLAYER_XP_PER_HP`). The player leads the raid.
+- Default: going from level n to n + 1 costs `250 * n` XP (`PLAYER_LEVEL_XP`), no cap. Total XP is stored and the level derived from it.
 
 ### Class experience
 
-- Each class (wizard, healer, warrior, archer) has its own level.
-- A class earns experience whenever it is equipped on an agent or on the player and that character attacks.
-- Class levels unlock stronger attacks, faster attacks, buffs and similar.
+- Each class (wizard, healer, warrior, archer) has its own level. **Built.**
+- A class earns experience whenever it is equipped on an agent or on the player and that character attacks. **Built**, counting only blows that land.
+- Class levels unlock stronger attacks, faster attacks, buffs and similar. Not built.
+- Default: per point of damage, not per attack: 1 XP per point a character of that class deals (`CLASS_XP_PER_HP`). The same as per attack while every blow is 1 HP.
+- Default: going from level n to n + 1 costs `100 * n` XP (`CLASS_LEVEL_XP`), no cap. Everyone starts at level 1 with 0 XP.
+- Default: several agents on one class each earn that class XP, so it levels faster. Intended.
 
 ### Gold
 
-- 1 gold per 100 HP of monster slain.
+- 1 gold per 100 HP of monster slain. **Built**, shown on the sign.
 - Awarded only when the monster is slain, not as damage is dealt.
+- Default: `Math.floor(maxHp / 100)` (`HP_PER_GOLD`): rounded down. Each monster records its `maxHp` when it spawns (still 100 for every kind).
 - For now gold only buys customisation for characters: different sprites, colours, hats and so on.
 
 ### Kill counts
 
-- Keep a count of each type of monster slain, not just the total. Not used yet; kept for a later iteration.
+- Keep a count of each type of monster slain, not just the total. **Built**: saved, and shown in the codex that opens from the kill count on the sign. Not used for anything else yet.
 
 ### Monsters fighting back
 
@@ -38,11 +44,8 @@ Planning notes for growing this layout from a visualizer with a battle mode into
 
 ### Experience
 
-- How is player experience earned: from every attack by anyone, from kills, or only from the player's own attacks?
-- Is class experience per attack or per point of damage? They are the same today (1 HP per attack) but diverge once attacks get stronger.
-- Three agents on the same class earn that class experience three times as fast. Is that intended?
-- Level curve and level cap.
 - The exact unlocks per class and the levels they arrive at.
+- (How experience is earned, per attack or per point, several agents on one class, and the level curve and cap now have defaults; see Decided.)
 
 ### Monsters fighting back
 
@@ -53,7 +56,7 @@ Planning notes for growing this layout from a visualizer with a battle mode into
 
 ### Gold and customisation
 
-- Rounding when monster HP is not a multiple of 100 (only matters once monster HP varies).
+- (Rounding when monster HP is not a multiple of 100 now has a default: round down. See Decided.)
 - Who owns a purchase: the player's account, with items applied per class or per character?
 - An agent's look is forgotten with the agent. Should looks be set per class so they survive?
 - Where the shop lives. The scene is a strip of at most 560px above the terminals; the info card is small.
@@ -65,19 +68,19 @@ Planning notes for growing this layout from a visualizer with a battle mode into
 
 ## Technical notes
 
-- **State today** (`idle-rpg.state` in Herdr's shared state): `you`, `spots`, `sprites`, `seen`, `battle`, `monster`, `slain`. HP is saved every 10 points and on a kill.
-- **State to add:** player `{ xp, level }`, per-class `{ xp, level }`, `gold`, kills per monster kind, owned and equipped customisations. Add a version number so later changes can migrate.
-- **Existing kill total** cannot be split by monster kind after the fact. Keep it as the total and start the per-kind counts from zero.
+- **State today** (`idle-rpg.state` in Herdr's shared state, version 1): `version`, `you`, `spots`, `sprites`, `seen`, `battle`, `monster` (now with `maxHp`), `slain`, `gold`, `kills` per monster kind, and `xp` for `you` and each class (total XP only; levels are derived). HP and XP are saved every 10 points of damage and on a kill. `loadState` in `rules.js` reads older state and malformed values without throwing. See `RECIPE.md`.
+- **State still to add:** owned and equipped customisations.
+- **Existing kill total** cannot be split by monster kind after the fact. It is kept as the total and the per-kind counts start from zero.
 - **Faster attacks** conflict with the single 3-second beat that everyone attacks on. Each class (or attacker) needs its own cadence.
 - **Stronger attacks** mean damage per blow is no longer always 1; `fight()` already takes a number.
 - **Customisation art** is the costly part. Every character is drawn in a standing sprite, walk frames and three fighting poses in two directions. Colours can be generated by swapping palettes in `tools/idle-rpg-sprites.py`. Hats either multiply the sprite count or are drawn as a separate layer placed over the head in each pose.
-- **`main.js` is one class of about 1,000 lines.** The game rules (experience, gold, unlocks) should be separated from the drawing before much is added. Whether a Herdr mod can be split across files is not yet checked.
+- **`main.js` is one class of about 1,250 lines.** A Herdr mod may import other files in its folder (`./rules.js`; Herdr's own `win98` mod does), so the game rules (experience, levels, gold, kill counts, loading state) now live in `rules.js` as plain functions, and `main.js` draws. Unlocks should go there too.
 - **Progress only accrues while the layout is shown**, since the timers live in the mod. Whether that is acceptable for an idle game is worth a decision.
 
 ## Proposed order
 
-1. State and bookkeeping: versioned state, kills per monster kind, gold on a kill, shown on the sign.
-2. Experience: player and class experience and levels, shown on the info cards. No unlocks yet.
+1. State and bookkeeping: versioned state, kills per monster kind, gold on a kill, shown on the sign. **Built.**
+2. Experience: player and class experience and levels, shown on the info cards. No unlocks yet. **Built** (levels also on the class picker, and a note over the head on a level-up).
 3. Class unlocks: stronger and faster attacks, then buffs. Needs per-attacker cadence.
 4. Customisation shop: colours first (cheap to generate), then hats and alternate sprites.
 5. Monsters fighting back, once its design questions are answered.

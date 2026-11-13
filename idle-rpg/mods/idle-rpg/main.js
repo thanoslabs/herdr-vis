@@ -17,17 +17,20 @@
 // else at range. Every few seconds each working agent attacks in its own way
 // (sword swing, arrow, fireball, thrown potion) for 1 HP; when the monster
 // falls another one turns up. Turning it off sends everyone back to their spots.
+// Progress (rules.js): every point of damage that lands earns experience for
+// the attacker's class and for you; a kill earns gold. Levels show on the
+// cards and the class choices, gold and kills on the sign.
 // Layout props: { inset } = left edge of the sign (84 leaves room for macOS buttons).
 
 import { View, div, image } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { agents, props, run, setShared, shared, spaces } from "herdr";
+import { CLASSES, MONSTER_HP, STATE_VERSION, YOU, classLevel, credit, loadState, playerLevel, slay } from "./rules.js";
 
 const ART = "mods/idle-rpg/art";
-// shared: { you: {x, y}, spots: { <address>: {x, y} }, sprites: { you | <address>: <class> } }
+// shared: { version, you: {x, y}, spots: { <address>: {x, y} }, sprites: { you | <address>: <class> },
+//   seen, battle, monster, slain, gold, kills: { <kind>: n }, xp: { you | <class>: n } } (see loadState)
 const STATE = "idle-rpg.state";
-const CLASSES = ["wizard", "healer", "warrior", "archer"];
-const YOU = "you"; // the person's key in `sprites` and as an open card
 const randomClass = () => CLASSES[Math.floor(Math.random() * CLASSES.length)];
 const STATUS = {
   working: ["Working", "#ffd166"],
@@ -63,7 +66,8 @@ const CELL_W = 88;
 const YOU_Y = [12, FLOOR_H - 24];
 const CRITTER_Y = [16, FLOOR_H - 42];
 const CARD_W = 232;
-// Battle mode. Sizes are on-screen px (art px x 4, plus the outline).
+// Battle mode. Sizes are on-screen px (art px x 4, plus the outline). A new
+// kind also goes in KINDS in rules.js, or its kills are not counted.
 const MONSTERS = {
   slime: { name: "Slime", w: 136, h: 104, core: { x: 0, y: 44, r: 18, half: 60 } },
   ogre: { name: "Ogre", w: 200, h: 200, core: { x: 0, y: 86, r: 24, half: 62 } },
@@ -73,7 +77,6 @@ const MONSTERS = {
 // its centre line and above its feet, how far a blow may stray from it, and
 // half the bulk's width, which is how close a warrior stands. The picture is
 // often much wider than that (the dragon's head, wings and tail).
-const MONSTER_HP = 100;
 const ATTACK_MS = 3000; // each working agent hits once per beat, for 1 HP
 const RESPAWN_MS = 9000; // how long a fallen monster lies there before the next
 const MONSTER_Y = 108; // where its feet are on the floor
@@ -91,19 +94,24 @@ const LAST_TICK = STAGGER - 1 + 4; // the tick on which the latest attacker's im
 const BLINK_MS = 5200; // monsters blink this often
 const ROAR_MS = 14000; // and the ogre roars this often
 const MOVE = { duration: 700, easing: "ease-in-out" }; // walking between spots and the formation
+const CHEER_MS = 2400; // a level-up note over someone's head rises and fades this long
+const GOLD = "#ffd166";
 
 function clamp(n, lo, hi) {
   return Math.max(lo, Math.min(hi, n));
 }
 
-function summary(list) {
-  const n = (s) => list.filter((a) => a.status === s).length;
-  const parts = [];
-  if (n("blocked")) parts.push(`${n("blocked")} need you`);
-  if (n("working")) parts.push(`${n("working")} working`);
-  if (n("done")) parts.push(`${n("done")} done`);
-  if (n("idle")) parts.push(`${n("idle")} resting`);
-  return parts.join(" · ");
+const capital = (word) => (typeof word === "string" && word ? word[0].toUpperCase() + word.slice(1) : "");
+
+// The sign's counts of agents by status, as [icon, w, h, n], skipping zeros.
+function tally(list) {
+  const n = (st) => list.filter((a) => a.status === st).length;
+  return [
+    ["alert", 18, 20, n("blocked")],
+    ["i-swords", 18, 18, n("working")],
+    ["done", 18, 20, n("done")],
+    ["i-sleep", 18, 18, n("idle")],
+  ].filter((t) => t[3] > 0);
 }
 
 function ago(ms) {
@@ -117,7 +125,17 @@ function ago(ms) {
 export default class RaidParty extends View {
   init(_props, cx) {
     // the later keys are this layout's earlier names, so a rename keeps what was saved
-    const saved = shared(STATE) ?? shared("raid-party.state") ?? shared("rpg.state") ?? shared("snow-loft.state") ?? {};
+    const read = [STATE, "raid-party.state", "rpg.state", "snow-loft.state"].map((key) => shared(key)).find((v) => v && typeof v === "object");
+    let saved;
+    try {
+      saved = loadState(read);
+    } catch {
+      saved = loadState(undefined); // only a live object another mod shared could get here
+    }
+    // State from a later version of this mod is read, never written: saving
+    // would drop what this version does not know. Progress then lasts only
+    // until the layout is closed.
+    this.readOnly = saved.version > STATE_VERSION;
     this.now = Date.now();
     cx.timer.every(TICK_MS, (cx) => {
       this.now = Date.now();
@@ -125,13 +143,15 @@ export default class RaidParty extends View {
     });
     this.size = { width: 900, height: 360 };
     this.wallH = 210; // the wall's height, learned from pointer events
-    this.you = saved.you ?? { x: 154, y: 16 };
-    this.spots = { ...(saved.spots ?? {}) };
-    this.sprites = { ...(saved.sprites ?? {}) };
-    this.seen = { ...(saved.seen ?? {}) }; // <address>: when it was last here
-    this.battle = saved.battle ?? true;
-    this.monster = saved.monster ?? null; // { kind, hp, id, slainAt? }
-    this.slain = saved.slain ?? 0;
+    this.you = saved.you;
+    this.spots = saved.spots;
+    this.sprites = saved.sprites;
+    this.seen = saved.seen; // <address>: when it was last here
+    this.battle = saved.battle;
+    this.monster = saved.monster; // { kind, hp, maxHp, id, slainAt? }
+    this.progress = { slain: saved.slain, gold: saved.gold, kills: saved.kills, xp: saved.xp };
+    this.cheerSeq = 0;
+    this.cheers = {}; // YOU | <address>: { lines, id, at } while a level-up note shows
     this.unsaved = 0; // damage dealt since the last save
     this.tick = null; // how many TICK_STEPs into the current beat's attacks; null between beats
     this.beat = 0;
@@ -150,8 +170,9 @@ export default class RaidParty extends View {
     cx.timer.every(BLINK_MS, flick("blink", 170, () => !this.roar));
     cx.timer.every(ROAR_MS, flick("roar", 1100, () => this.monster.kind === "ogre"));
     cx.timer.every(ATTACK_MS, (cx) => {
-      if (!this.battle) return;
-      if (this.fight(0)) return cx.notify(); // a new monster walked in
+      // nothing happens while the scene is too narrow to show the fight
+      if (!this.battle || Math.max(320, this.size.width) < 640) return;
+      if (this.fight()) return cx.notify(); // a new monster walked in
       if (!(this.monster?.hp > 0)) return;
       const keys = agents()
         .filter((a) => a.status === "working")
@@ -168,6 +189,7 @@ export default class RaidParty extends View {
     this.press = null; // { kind: "floor" | "critter" | YOU, address?, px, py }
     this.drag = null; // { address, x, y, vx, last } while a critter dangles
     this.card = null; // whose card is open: an agent's address, or YOU
+    this.codex = false; // the list of kills by kind is open under the sign
     this.picking = false; // the open card is showing the class choices
     this.walking = false;
     this.walkTask = null;
@@ -176,6 +198,7 @@ export default class RaidParty extends View {
   // Agents can be missing for a while (the app just started, a machine is
   // offline), so one is only forgotten after a week away.
   save() {
+    if (this.readOnly) return;
     const old = Date.now() - 7 * 24 * 3600 * 1000;
     for (const k of Object.keys(this.seen)) {
       if (this.seen[k] >= old) continue;
@@ -184,38 +207,59 @@ export default class RaidParty extends View {
       delete this.sprites[k];
     }
     setShared(STATE, {
+      version: STATE_VERSION,
       you: this.you,
       spots: this.spots,
       sprites: this.sprites,
       seen: this.seen,
       battle: this.battle,
       monster: this.monster,
-      slain: this.slain,
+      ...this.progress,
     });
     this.unsaved = 0;
   }
 
-  // Brings in a monster if one is due, otherwise takes `hits` off the one
-  // there. Returns whether anything changed. HP is saved every tenth point and
-  // on a kill, not on every hit.
-  fight(hits) {
+  // Brings in a monster if one is due, otherwise lands a blow from each of
+  // `keys` (1 HP each) on the one there. Only blows that land earn experience:
+  // a monster with 2 HP left takes two of five. Returns whether anything
+  // changed. HP and experience are saved every tenth point and on a kill, not
+  // on every hit.
+  fight(keys = []) {
     if (!this.battle) return false;
     const m = this.monster;
     if (!m || !MONSTERS[m.kind] || (m.hp <= 0 && Date.now() - (m.slainAt ?? 0) >= RESPAWN_MS)) {
       const kinds = Object.keys(MONSTERS).filter((k) => k !== m?.kind);
-      this.monster = { kind: kinds[Math.floor(Math.random() * kinds.length)], hp: MONSTER_HP, id: (m?.id ?? 0) + 1 };
+      this.monster = { kind: kinds[Math.floor(Math.random() * kinds.length)], hp: MONSTER_HP, maxHp: MONSTER_HP, id: (m?.id ?? 0) + 1 };
       this.save();
       return true;
     }
-    if (m.hp <= 0 || hits <= 0) return false;
-    m.hp = Math.max(0, m.hp - hits);
-    this.unsaved += hits;
+    // no blow lands while the scene is too narrow to show the fight
+    if (Math.max(320, this.size.width) < 640) return false;
+    const landed = keys.slice(0, Math.max(0, m.hp));
+    if (!landed.length) return false;
+    m.hp -= landed.length;
+    this.unsaved += landed.length;
+    for (const key of landed) {
+      for (const up of credit(this.progress, this.sprites[key])) {
+        // a class's level-up shows over whoever earned it, yours over you
+        if (up === YOU) this.cheer(YOU, `Level ${playerLevel(this.progress.xp[YOU]).level}`);
+        else this.cheer(key, `${capital(up)} ${classLevel(this.progress.xp[up]).level}`);
+      }
+    }
     if (m.hp === 0) {
       m.slainAt = Date.now();
-      this.slain += 1;
+      slay(this.progress, m);
     }
     if (m.hp === 0 || this.unsaved >= 10) this.save();
     return true;
+  }
+
+  // Shows a short note over someone's head (see cheerNote). Level-ups from the
+  // same blow share one note.
+  cheer(key, line) {
+    const c = this.cheers[key];
+    if (c && Date.now() - c.at < TICK_STEP / 2) c.lines.push(line);
+    else this.cheers[key] = { lines: [line], id: (this.cheerSeq += 1), at: Date.now() };
   }
 
   // Whether you join in when the party attacks: the ranged classes from
@@ -235,7 +279,7 @@ export default class RaidParty extends View {
       cx.timer.after(i * TICK_STEP, (cx) => {
         if (beat !== this.beat) return;
         this.tick = i > LAST_TICK ? null : i;
-        this.fight(keys.filter((key) => this.phaseOf(key) === 4).length);
+        this.fight(keys.filter((key) => this.phaseOf(key) === 4));
         cx.notify();
       });
     }
@@ -356,7 +400,7 @@ export default class RaidParty extends View {
         .left(0)
         .top(0)
         .child(image(`${ART}/monster-${m.kind}${part ? `-${part}` : ""}.png`).w(kind.w).h(kind.h));
-    const tone = m.hp > 50 ? "#4cd47b" : m.hp > 20 ? "#ffd166" : "#ff5d5d";
+    const tone = m.hp > m.maxHp / 2 ? "#4cd47b" : m.hp > m.maxHp / 5 ? "#ffd166" : "#ff5d5d";
     return [
       div()
         .id(`idle-rpg-monster-${m.id}`)
@@ -404,14 +448,14 @@ export default class RaidParty extends View {
             .font_semibold()
             .text_color(CREAM)
             .child(div().child(dead ? `${kind.name} slain!` : kind.name))
-            .child(div().child(dead ? "" : `${m.hp}/${MONSTER_HP}`)),
+            .child(div().child(dead ? "" : `${m.hp}/${m.maxHp}`)),
         )
         .child(
           div()
             .w(BAR_W)
             .h(8)
             .bg("#1b2233")
-            .child(div().id("idle-rpg-monster-hp").h(8).w(Math.round((BAR_W * m.hp) / MONSTER_HP)).bg(tone).transition("width", { duration: 150, easing: "ease-out" })),
+            .child(div().id("idle-rpg-monster-hp").h(8).w(Math.round((BAR_W * m.hp) / m.maxHp)).bg(tone).transition("width", { duration: 150, easing: "ease-out" })),
         ),
     ];
   }
@@ -546,7 +590,6 @@ export default class RaidParty extends View {
       ...tiles("mountains", 256, 80, (el) => el.bottom(horizon - 24)),
       fade(div().absolute().left(0).top(0).bottom(FLOOR_H).w(W).bg(TINT), "idle-rpg-night-sky", night * 0.5),
       ...tiles("wall", 128, WALL_H, (el) => el.bottom(FLOOR_H)),
-      fade(div().absolute().left(0).bottom(FLOOR_H).w(W).h(WALL_H - 20).bg(TINT), "idle-rpg-night-wall", night * 0.35),
       ...fittings,
     ];
   }
@@ -649,6 +692,58 @@ export default class RaidParty extends View {
     ];
   }
 
+  // A level-up note over someone whose feet are at x, y: it pops in, then on
+  // the next render (the next tick of the beat) rises and fades natively.
+  cheerNote(key, x, y) {
+    const c = this.cheers[key];
+    const fresh = Date.now() - c.at < TICK_STEP * 0.8;
+    return v_flex()
+      .id(`idle-rpg-cheer-${key}-${c.id}`)
+      .absolute()
+      .left(x - 50)
+      .top(Math.max(fresh ? y - 98 : y - 116, 4 - this.wallH)) // kept inside the scene when the wall is low
+      .w(100)
+      .gap(2)
+      .items_center()
+      .opacity(fresh ? 1 : 0)
+      .transition("left", MOVE)
+      .transition("top", { duration: CHEER_MS, easing: "ease-out" })
+      .transition("opacity", { duration: CHEER_MS, easing: "ease-in" })
+      .children(c.lines.map((line) => div().px(5).rounded(6).bg("#000000a0").text_size(10).font_semibold().text_color(GOLD).child(`${line}!`)));
+  }
+
+  // Night on the rampart: darkness over the wall, the floor and everyone on it
+  // (but under the cards), fading in with the night. Each torch keeps a pool of
+  // light clear around its flame and the candle a small one on the table; past
+  // those the dark is even, at half strength, so nothing is ever black, and
+  // above the wall it thins out over 80px. The pictures hold all of that, so
+  // this is a row of them: the candle's, one per torch, and a plain one
+  // stretched over what is left.
+  gloom(W) {
+    const RISE = 80;
+    const H = RISE + WALL_H + FLOOR_H;
+    const piece = (left, w, art) =>
+      div()
+        .absolute()
+        .left(left)
+        .top(0)
+        .child(image(`${ART}/dark-${art}.png`).w(w).h(H));
+    const pieces = [piece(0, 272, "candle")];
+    let x = 272; // each torch's picture is 384px wide with the flame in the middle; see the torches in scenery
+    for (; x + 276 <= W; x += 384) pieces.push(piece(x, 384, "torch"));
+    if (x < W) pieces.push(piece(x, W - x, "fill"));
+    return div()
+      .id("idle-rpg-gloom")
+      .absolute()
+      .left(0)
+      .top(-WALL_H - RISE)
+      .w(W)
+      .h(H)
+      .opacity(this.night)
+      .transition("opacity", { duration: TICK_MS, easing: "linear" })
+      .children(pieces);
+  }
+
   // An agent being carried: it dangles from the pointer and swings against the motion.
   ragdoll(a) {
     const c = this.sprites[a.address];
@@ -708,14 +803,35 @@ export default class RaidParty extends View {
       .child(div().px(6).rounded(7).bg(this.card === YOU ? "#00000080" : "#00000040").text_size(10).font_semibold().text_color(CREAM).child("You"));
   }
 
-  // The four classes as buttons; the current one is ringed.
+  // One line of a card: a level, and a bar and numbers for the way to the next.
+  // `lv` is { level, into, need } (see levelOf).
+  meter(label, lv) {
+    return h_flex()
+      .gap(6)
+      .items_center()
+      .text_size(10)
+      .child(div().w(46).flex_none().truncate().text_color("#8ea3bb").child(label))
+      .child(div().w(30).flex_none().font_semibold().text_color(GOLD).child(`Lv ${lv.level}`))
+      .child(
+        div()
+          .flex_1()
+          .h(5)
+          .rounded(2)
+          .bg("#0b1626")
+          .child(div().h(5).rounded(2).w(`${Math.floor((lv.into / lv.need) * 100)}%`).bg(GOLD)),
+      )
+      .child(div().flex_none().text_color("#8ea3bb").child(`${lv.into}/${lv.need}`));
+  }
+
+  // The four classes as buttons, each with its level; the current one is ringed.
   picker(key) {
     return h_flex()
       .gap(4)
       .children(
         CLASSES.map((c) =>
-          div()
+          v_flex()
             .id(`idle-rpg-pick-${c}`)
+            .items_center()
             .p(3)
             .rounded(7)
             .border(1)
@@ -729,7 +845,8 @@ export default class RaidParty extends View {
               this.save();
               cx.notify();
             })
-            .child(image(`${ART}/${c}.png`).w(36).h(36)),
+            .child(image(`${ART}/${c}.png`).w(36).h(36))
+            .child(div().text_size(9).font_semibold().text_color(GOLD).child(`Lv ${classLevel(this.progress.xp[c]).level}`)),
         ),
       );
   }
@@ -781,7 +898,7 @@ export default class RaidParty extends View {
         .child(div().flex_1().truncate().text_color("#dbe7f3").child(v));
     const [word, color] = a ? (STATUS[a.status] ?? [a.status, "#9fb4cc"]) : ["", "#5cc8ff"];
     // Above their head when there is room, else beside them.
-    const cardH = (a ? 126 : 86) + (this.picking ? 56 : 0);
+    const cardH = (a ? 146 : 123) + (this.picking ? 70 : 0);
     const above = s.y - 72 - cardH;
     const minTop = 4 - this.wallH;
     const fits = above >= minTop;
@@ -824,7 +941,7 @@ export default class RaidParty extends View {
         .child(row("Where", `${a.space_name} · ${a.tab_name}`))
         .child(row("Doing", a.title || "—"));
     } else {
-      facts = facts.child(row("Class", klass[0].toUpperCase() + klass.slice(1)));
+      facts = facts.child(row("Class", capital(klass)));
     }
     return v_flex()
       .id("idle-rpg-card")
@@ -840,6 +957,13 @@ export default class RaidParty extends View {
       .border_color("#31506f")
       .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
       .child(h_flex().gap(8).items_start().child(this.portrait(key)).child(facts))
+      // your own level, then the level of the class this character has on
+      .child(
+        v_flex()
+          .gap(3)
+          .when(!a, (el) => el.child(this.meter("You", playerLevel(this.progress.xp[YOU]))))
+          .child(this.meter(capital(klass), classLevel(this.progress.xp[klass]))),
+      )
       .when(this.picking, (el) => el.child(this.picker(key)))
       .when(Boolean(a), (el) =>
         el.child(
@@ -893,8 +1017,24 @@ export default class RaidParty extends View {
       actors.push({ y: this.at[a.address].y, draw: () => this.critter(a) });
       if (this.fighting && a.status === "working" && this.monster.hp > 0) actors.push({ y: FLOOR_H, draw: () => this.attack({ key: a.address, cls: this.sprites[a.address], ...this.at[a.address] }, W, foeKind) });
     }
+    for (const [key, c] of Object.entries(this.cheers)) {
+      if (Date.now() - c.at > CHEER_MS + 1000) delete this.cheers[key];
+    }
+    for (const key of Object.keys(this.cheers)) {
+      const s = key === YOU ? !this.walking && you : list.some((a) => a.address === key && this.drag?.address !== key) && this.at[key];
+      if (s) actors.push({ y: FLOOR_H + 1, draw: () => [this.cheerNote(key, s.x, s.y)] });
+    }
     actors.sort((p, q) => p.y - q.y);
 
+    const { slain, gold } = this.progress;
+    const counts = tally(list);
+    // one count on the sign: a small icon and its number
+    const stat = (art, w, h, n) =>
+      h_flex()
+        .gap(3)
+        .items_center()
+        .child(image(`${ART}/${art}.png`).w(w).h(h))
+        .child(div().child(String(n)));
     const scenery = this.scenery(W); // also works out how dark it is
     const boards = Array.from({ length: Math.ceil(W / 128) }, (_, i) =>
       div().absolute().left(i * 128).top(0).child(image(`${ART}/floor.png`).w(128).h(FLOOR_H)),
@@ -918,19 +1058,8 @@ export default class RaidParty extends View {
           // the table and the barrel stand at the back, clear of the monster's corner
           .child(div().absolute().left(12).top(-34).child(image(`${ART}/table.png`).w(112).h(56)))
           .child(div().absolute().left(136).top(-30).child(image(`${ART}/barrel.png`).w(48).h(52)))
-          .child(
-            div()
-              .id("idle-rpg-night-floor")
-              .absolute()
-              .left(0)
-              .top(0)
-              .w(W)
-              .h(FLOOR_H)
-              .bg(TINT)
-              .opacity(this.night * 0.3)
-              .transition("opacity", { duration: TICK_MS, easing: "linear" }),
-          )
           .children(actors.flatMap((p) => p.draw()))
+          .child(this.gloom(W))
           .when(list.length === 0, (el) =>
             el.child(
               v_flex()
@@ -968,6 +1097,7 @@ export default class RaidParty extends View {
       .bg(NIGHT)
       .on_size_change((size, cx) => {
         this.size = size;
+        this.wallH = Math.max(0, size.height - FLOOR_H);
         cx.notify();
       })
       .on_mouse_down("left", (e, cx) => {
@@ -995,14 +1125,17 @@ export default class RaidParty extends View {
         const still = Math.abs(e.position.x - pr.px) + Math.abs(e.position.y - pr.py) <= 4;
         if (pr.kind === YOU) {
           if (still) {
+            this.codex = false;
             this.card = this.card === YOU ? null : YOU;
             this.picking = false;
           }
         } else if (pr.kind === "critter") {
+          this.codex = false;
           this.card = this.card === pr.address ? null : pr.address;
           this.picking = false;
         } else if (still) {
           this.card = null;
+          this.codex = false;
           this.walkTo(this.point(e), W, cx);
         }
         this.press = null;
@@ -1027,10 +1160,32 @@ export default class RaidParty extends View {
             v_flex()
               .child(div().text_size(13).font_semibold().text_color(CREAM).child("Raid Party"))
               .child(
-                div()
+                h_flex()
+                  .gap(8)
+                  .items_center()
                   .text_size(10)
                   .text_color("#d5e3f0")
-                  .child([summary(list) || "nobody in yet", this.battle && this.slain ? `${this.slain} slain` : ""].filter(Boolean).join(" · ")),
+                  .children(counts.length ? counts.map(([art, w, h, n]) => stat(art, w, h, n)) : [div().child("nobody in yet")])
+                  .when(this.battle && (slain > 0 || gold > 0), (el) =>
+                    el
+                      .child(
+                        // the kill count opens the codex
+                        stat("i-skull", 18, 18, slain)
+                          .id("idle-rpg-slain")
+                          .px(3)
+                          .rounded(4)
+                          .bg(this.codex ? "#ffffff30" : "#ffffff00")
+                          .cursor_pointer()
+                          .hover((st) => st.bg("#ffffff30"))
+                          .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+                          .on_click((_e, cx) => {
+                            this.codex = !this.codex;
+                            if (this.codex) this.card = null; // it would lie over the card
+                            cx.notify();
+                          }),
+                      )
+                      .child(stat("i-coin", 18, 18, gold)),
+                  ),
               ),
           )
           .child(
@@ -1048,13 +1203,77 @@ export default class RaidParty extends View {
               .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
               .on_click((_e, cx) => {
                 this.battle = !this.battle;
-                if (this.battle) this.fight(0); // someone to fight straight away
+                this.codex = false;
+                if (this.battle) this.fight(); // someone to fight straight away
                 this.save();
                 cx.notify();
               })
               .child(this.battle ? "End Raid" : "Start Raid"),
           ),
       )
-      .child(floor);
+      .child(floor)
+      // last, so it lies over the floor and everyone on it
+      .when(this.codex && this.battle, (el) => el.child(this.codexCard(props()?.inset ?? 84)));
+  }
+
+  // The codex, under the sign: every kind of monster and how many have fallen.
+  // A kind not yet slain is a dim shape with no name. Kills from before the
+  // counts by kind began are in the total only, so they get a line of their own.
+  codexCard(left) {
+    const { slain, kills } = this.progress;
+    const known = Object.keys(MONSTERS).reduce((sum, k) => sum + (kills[k] ?? 0), 0);
+    const line = (picture, name, n) =>
+      h_flex()
+        .gap(8)
+        .items_center()
+        .child(div().w(32).h(24).flex_none().flex().items_center().justify_center().child(picture))
+        .child(div().flex_1().truncate().text_color("#dbe7f3").child(name))
+        .child(div().font_semibold().text_color(CREAM).child(String(n)));
+    return v_flex()
+      .id("idle-rpg-codex")
+      .absolute()
+      .left(left)
+      .top(54)
+      .w(176)
+      .p(8)
+      .gap(3)
+      .rounded(8)
+      .bg("#101a2cf0")
+      .border(1)
+      .border_color("#ffffff24")
+      .text_size(11)
+      .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+      .child(
+        h_flex()
+          .gap(6)
+          .items_center()
+          .child(image(`${ART}/i-skull.png`).w(18).h(18))
+          .child(div().flex_1().text_size(12).font_semibold().text_color("#ffffff").child("Codex"))
+          .child(
+            div()
+              .id("idle-rpg-codex-x")
+              .px(5)
+              .rounded(5)
+              .text_color("#8ea3bb")
+              .cursor_pointer()
+              .hover((st) => st.bg("#ffffff1c"))
+              .on_click((_e, cx) => {
+                this.codex = false;
+                cx.notify();
+              })
+              .child("×"),
+          ),
+      )
+      .children(
+        Object.entries(MONSTERS).map(([k, kind]) => {
+          const n = kills[k] ?? 0;
+          const scale = 24 / Math.max(kind.w, kind.h);
+          const picture = image(`${ART}/monster-${k}.png`)
+            .w(Math.round(kind.w * scale))
+            .h(Math.round(kind.h * scale));
+          return line(div().opacity(n > 0 ? 1 : 0.25).child(picture), n > 0 ? kind.name : "???", n);
+        }),
+      )
+      .when(slain > known, (el) => el.child(line(div(), "Before the codex", slain - known)));
   }
 }

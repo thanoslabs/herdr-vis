@@ -7,7 +7,7 @@
 #
 # Edit the grids below (one character per pixel, "." is empty) and re-run.
 # Everything is drawn at 8 image pixels per art pixel and shown at 4.
-import os, struct, sys, zlib
+import math, os, struct, sys, zlib
 if len(sys.argv) != 2:
     sys.exit("usage: idle-rpg-sprites.py <output folder>")
 out = sys.argv[1]
@@ -110,7 +110,7 @@ SCALE = 8  # 8 image pixels per sprite pixel: 2x a 4px on-screen pixel, so retin
 def png(g, pal):
     n = len(g)
     w = len(g[0])
-    rgba = lambda ch: bytes.fromhex(pal.get(ch, ch)[1:]) + b"\xff"
+    rgba = lambda ch: (bytes.fromhex(pal.get(ch, ch)[1:]) + b"\xff")[:4]  # "#rrggbb", or "#rrggbbaa" for see-through
     raw = b""
     for row in g:
         line = b"\x00" + b"".join((rgba(ch) if ch else b"\x00\x00\x00\x00") * SCALE for ch in row)
@@ -374,6 +374,68 @@ icon("done.png", [                                      # done: finished while y
     ".ggggg.",
     "..gg...",
 ], {"g": "#3fbf6f", "w": "#ffffff"})
+
+# ---- Night: darkness laid over the wall, the floor and everyone on it, with a
+# pool of light left clear around a flame. The dark deepens away from the
+# flame in six even steps (rings, not a smooth blur) up to half strength, so
+# the far corners are dim, not black. 74 rows: 20 above the wall, where the dark
+# thins out upward to nothing (so a tall monster is not cut in two at the wall's
+# top), then the wall (16) and the floor (38). `cy` counts from the wall's top.
+RISE = 20
+def dark(name, w, cx=0, cy=0, near=0, far=0, stretch=1.0):
+    g = blank(w, RISE + 54)
+    for y in range(RISE + 54):
+        for x in range(w):
+            step = 6
+            if far:
+                d = math.hypot((x + 0.5 - cx) / stretch, y + 0.5 - RISE - cy)
+                t = min(1.0, max(0.0, (d - near) / (far - near)))
+                step = round(t * t * (3 - 2 * t) * 6)
+            step = min(step, 6 * y // RISE)
+            if step: g[y][x] = "#0a1030%02x" % round(128 * step / 6)
+    save(name, g)
+
+dark("dark-torch.png", 96, 48.5, 4.5, 9, 40, 1.15)      # one torch's stretch of wall, the flame near the top
+dark("dark-candle.png", 68, 28.5, 9, 3, 24)             # the left end, lit only by the candle on the table
+dark("dark-fill.png", 4)                                # no flame: stretched over whatever is left
+
+# ---- Sign icons: the counts on the sign, drawn small (shown at 2 screen px a pixel) ----
+icon("i-swords.png", [                                  # working
+    "A.....A",
+    ".A...A.",
+    "..A.A..",
+    "g..A..g",
+    ".gA.Ag.",
+    "..g.g..",
+    ".d...d.",
+], SWORD)
+icon("i-sleep.png", [                                   # resting
+    "zzzz...",
+    "..z....",
+    ".z.....",
+    "zzzz...",
+    "....zzz",
+    ".....z.",
+    "....zzz",
+], Z)
+icon("i-skull.png", [                                   # slain
+    ".wwwww.",
+    "wwwwwww",
+    "wkkwkkw",
+    "wkkwkkw",
+    "wwwkwww",
+    ".wwwww.",
+    ".wkwkw.",
+], {"w": "#ece6d6", "k": "#2a2433"})
+icon("i-coin.png", [                                    # gold
+    "..ggg..",
+    ".gyyyg.",
+    "gyyhyyg",
+    "gyhyyyg",
+    "gyyyyyg",
+    ".gyyyg.",
+    "..ggg..",
+], {"g": "#c8891e", "y": "#f2c14e", "h": "#fff0b0"})
 
 # ---- Monsters (battle mode): drawn from shapes, outlined like the sprites ----
 class Pix:
