@@ -1,83 +1,72 @@
-# template
+# herdr-vis
 
-[![CI](https://github.com/thanoslabs/template-repo/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/thanoslabs/template-repo/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/thanoslabs/template-repo?sort=semver&display_name=tag)](https://github.com/thanoslabs/template-repo/releases/latest)
-[![Docs](https://github.com/thanoslabs/template-repo/actions/workflows/docs.yaml/badge.svg?branch=main)](https://thanoslabs.github.io/template-repo/)
-[![Docs site](https://img.shields.io/badge/docs-GitHub%20Pages-blue?logo=github)](https://thanoslabs.github.io/template-repo/)
-[![Renovate](https://img.shields.io/badge/renovate-enabled-brightgreen?logo=renovatebot)](https://github.com/thanoslabs/template-repo/pulls?q=is%3Apr+author%3Aapp%2Frenovate)
-[![SemVer](https://img.shields.io/badge/semver-2.0.0-blue)](https://semver.org/)
-[![License: MIT](https://img.shields.io/github/license/thanoslabs/template-repo)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/thanoslabs/herdr-vis?sort=semver&display_name=tag)](https://github.com/thanoslabs/herdr-vis/releases/latest)
+[![Docs](https://github.com/thanoslabs/herdr-vis/actions/workflows/docs.yaml/badge.svg?branch=main)](https://thanoslabs.github.io/herdr-vis/)
+[![Renovate](https://img.shields.io/badge/renovate-enabled-brightgreen?logo=renovatebot)](https://github.com/thanoslabs/herdr-vis/pulls?q=is%3Apr+author%3Aapp%2Frenovate)
+[![License: MIT](https://img.shields.io/github/license/thanoslabs/herdr-vis)](LICENSE)
 
-Template repository for `thanoslabs` projects.
+Agent workspace visualizers for the [Herdr](https://herdr.dev) desktop app: layouts that show your coding agents as something more fun than a list.
 
-## What's Included
+## RPG
 
-- **Renovate** — automated dependency updates for Docker, Go modules, and GitHub Actions
-- **Releases** — automatic SemVer bumps on merge to `main` via PR labels (`major`/`minor`/`patch`, default `patch`), plus manual dispatch for explicit versions
-- **Branch protection** — `main` requires PRs and review
-- **CODEOWNERS** — `@thanoslabs/reviewers` auto-requested for review
-- **MIT License**
-- **.gitignore** — common exclusions for OS, IDE, build outputs, and secrets
-- **.tool-versions** — single source of truth for language/tool versions (asdf/mise compatible)
-- **Docs** — markdown in `docs/` built into a static site with [nebula-md](https://github.com/thanoslabs/nebula-md) and deployed to GitHub Pages (public repos only)
+![RPG](rpg/preview.png)
 
-## Using This Template
+A pixel-art castle rampart across the top of the window, under a sky with drifting clouds and a 20-minute day and night. You and every agent are pixel-art adventurers: a wizard, healer, warrior or archer, picked at random on arrival.
 
-1. Click **Use this template** to create a new repository
-2. Pin your project's language and tool versions in `.tool-versions`
-3. Update `renovate.json` to configure managers and schedules for your project
-4. Enable the new repo in the Renovate GitHub App if using hosted Renovate
-5. Fill in the artifact build/publish TODO stub in `.github/workflows/release.yaml`
-6. For public repos, set **Settings → Pages → Source** to **GitHub Actions** so the docs site can deploy
-7. Replace `thanoslabs/template-repo` in the README badges with your repo's `owner/name` (and drop the docs site badge for private repos)
+| Agent status | What the adventurer does |
+|---|---|
+| Working | Bounces under two clashing swords |
+| Blocked (needs you) | A hopping red "!" bubble |
+| Done | A green tick bubble |
+| Idle | Rests while z's drift up |
 
-## Renovate
+- **Click the floor** to walk there.
+- **Click an agent** for a card with its portrait, status, location and a "Go to terminal" button. The wrench on the portrait lets you pick a different class; click yourself to change your own.
+- **Drag an agent** to carry it around; release to drop it. Positions and classes are remembered.
 
-Dependency updates are managed via Renovate. Configuration is in `renovate.json` and `.github/renovate-config.js`.
+Full description of the design and how it is built: [`rpg/RECIPE.md`](rpg/RECIPE.md).
 
-Enabled managers:
-- `asdf` (keeps `.tool-versions` up to date)
-- `docker-compose`
-- `github-actions`
-- `gomod`
+## Install
 
-Add or remove managers as needed for your project.
+Each visualizer is a folder laid out like Herdr's config folder (`~/.config/herdr-app`): `layouts/`, `mods/`, `themes/`.
 
-## Releases
+Clone the repo and copy the layout into Herdr:
 
-Releases follow [SemVer](https://semver.org/) with bare `X.Y.Z` tags (no `v` prefix).
+```sh
+git clone https://github.com/thanoslabs/herdr-vis.git
+cd herdr-vis
+./install.sh rpg
+herdr-app do layout.switch --name rpg
+```
 
-- **Automatic**: merging a PR to `main` cuts a release based on its `major`, `minor`, or `patch` label; no label means a `patch` bump.
-- **Manual**: run the **Release** workflow with an explicit `X.Y.Z` version to cut a specific release.
+`install.sh` copies the layout, theme and mod into `~/.config/herdr-app` (or `$HERDR_APP_HOME`), which is how Herdr expects layouts to be added. Run it again after a `git pull` to update. To remove the layout, delete `layouts/rpg.json`, `layouts/rpg.svg`, `themes/rpg.json` and `mods/rpg/` from that folder; your other layouts are untouched.
 
-Automation lives in `.github/workflows/release.yaml` (versioning, tag, GitHub release). Building and publishing artifacts (images, binaries) is project-specific — fill in the TODO stub in the workflow.
+Alternatively, ask your agent inside Herdr to read `~/.config/herdr-app/AGENTS.md` and add the layout from this repo's `rpg` folder.
 
-## Docs
+## Developing
 
-Project documentation lives in `docs/` as Obsidian-flavoured markdown (frontmatter, `[[wikilinks]]`, callouts). On every push to `main` that touches `docs/`, `.github/workflows/docs.yaml` calls the reusable [nebula-md](https://github.com/thanoslabs/nebula-md) workflow to build a static site and deploy it to GitHub Pages.
+- Edit the files in this repo, then run `./install.sh rpg` to copy them into Herdr. Herdr reloads layouts and mods as they change; if a mod edit does not show, switch layouts away and back.
+- Run `herdr-app check rpg/mods/rpg` after every mod change, and `herdr-app status` to see errors.
+- All the pixel art is generated: edit the grids in `tools/rpg-sprites.py` and run `python3 tools/rpg-sprites.py rpg/mods/rpg/art`.
+- Herdr writes `gpui-kit.d.ts` and `jsconfig.json` into each mod folder; they are git-ignored.
+- See [CONTRIBUTING.md](CONTRIBUTING.md) for branch, commit and release conventions.
 
-- **Public repos**: the site is built and deployed to GitHub Pages.
-- **Private repos**: the workflow is skipped — nothing is published.
-
-You can also trigger it manually via **Actions → Docs → Run workflow**.
-
-## Files
+## Layout
 
 ```
 .
-├── .github/
-│   ├── CODEOWNERS           # Auto-request review from @thanoslabs/reviewers
-│   ├── renovate-config.js   # Renovate platform config
-│   └── workflows/
-│       ├── docs.yaml        # Build docs/ with nebula-md, deploy to GitHub Pages (public repos)
-│       ├── release.yaml     # Label-driven SemVer release workflow
-│       └── renovate.yaml    # Renovate GitHub Action workflow
-├── docs/                   # Project documentation (markdown → nebula-md site)
-├── .gitignore
-├── .tool-versions          # Pinned language/tool versions (asdf/mise)
-├── CONTRIBUTING.md
-├── LICENSE
-├── README.md
-├── renovate.json           # Renovate settings
-└── SECURITY.md
+├── install.sh       # copies a visualizer into ~/.config/herdr-app
+├── tools/           # rpg-sprites.py: draws every PNG in art/
+├── rpg/
+│   ├── layouts/     # rpg.json (the window), rpg.svg (settings preview)
+│   ├── mods/        # rpg/ (main.js, mod.json, art/)
+│   ├── themes/      # rpg.json
+│   ├── RECIPE.md    # the brief the layout is built from
+│   └── preview.png
+├── docs/            # documentation site source (nebula-md)
+└── .github/         # release, docs and Renovate workflows
 ```
+
+## License
+
+[MIT](LICENSE)

@@ -2,36 +2,43 @@
 
 ## Purpose
 
-GitHub template repository for bootstrapping `thanoslabs` projects. Provides Renovate-managed dependency updates, branch protection, CODEOWNERS, license, and standard `.gitignore` as a starting point — not a runnable application.
+Agent workspace visualizers for the [Herdr](https://herdr.dev) desktop app. Each top-level folder (currently `rpg/`) is one layout, laid out like Herdr's config folder so it can be linked or copied into `~/.config/herdr-app`.
 
 ## Tech stack
 
-- **Renovate** for dependency updates (managers: `docker-compose`, `github-actions`, `gomod`)
-- **GitHub Actions** for the Renovate, release, and docs workflows
-- **[nebula-md](https://github.com/thanoslabs/nebula-md)** for building `docs/` into a static markdown site
+- **Herdr layouts** (`layouts/*.json`), **themes** (`themes/*.json`) and **mods** (`mods/<name>/main.js`, JavaScript against gpui-kit; no HTML, CSS or Node APIs)
+- **Renovate**, **GitHub Actions** (release, docs) and **[nebula-md](https://github.com/thanoslabs/nebula-md)** for the docs site, from the org template
 - **MIT License**
 
 ## Structure
 
 ```
 .
+├── rpg/                # One visualizer
+│   ├── layouts/              # rpg.json, rpg.svg (settings preview)
+│   ├── mods/rpg/       # main.js, mod.json, art/*.png
+│   ├── themes/               # rpg.json
+│   ├── RECIPE.md             # Brief another agent could rebuild it from
+│   └── preview.png
+├── tools/                    # rpg-sprites.py: generates every PNG in art/
+├── install.sh                # Copies a visualizer into ~/.config/herdr-app
 ├── .agents/                  # Agent instructions and skills
-├── .github/
-│   ├── CODEOWNERS            # @thanoslabs/reviewers
-│   ├── renovate-config.js    # Renovate platform config
-│   └── workflows/
-│       ├── docs.yaml         # nebula-md docs build + GitHub Pages deploy
-│       ├── release.yaml      # Label-driven SemVer release workflow
-│       └── renovate.yaml     # Renovate workflow
-├── docs/                     # Project documentation (markdown source for the docs site)
-├── .tool-versions            # Pinned language/tool versions (asdf/mise)
-├── AGENTS.md                 # Operational expectations for humans and AI agents
+├── .github/                  # CODEOWNERS, Renovate config, workflows
+├── docs/                     # Docs site source
+├── AGENTS.md
 ├── CONTRIBUTING.md
-├── LICENSE
 ├── README.md
-├── SECURITY.md
-└── renovate.json             # Renovate settings
+└── renovate.json
 ```
+
+## Working on a visualizer
+
+- The reference for layouts, mods and the `herdr` module is `~/.config/herdr-app/AGENTS.md` and the `.d.ts` files beside it, rewritten by the app to match the installed version. Read them before changing a mod.
+- After every mod change run `herdr-app check <mod folder>`, then `herdr-app status` with the layout shown. `check` renders with no agents, so test agent-dependent code with a hard-coded fake agent.
+- `herdr-app shot <file.png>` captures the window for visual checks.
+- Keep each visualizer's `RECIPE.md` and `preview.png` in step with its files.
+- Art is original. Do not copy characters or artwork from existing games or products.
+- `gpui-kit.d.ts` and `jsconfig.json` inside mod folders are written by Herdr and git-ignored.
 
 ## Conventions
 

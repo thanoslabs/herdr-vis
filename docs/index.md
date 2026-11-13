@@ -2,6 +2,6 @@
 title: Home
 ---
 
-Project documentation. Every markdown file under `docs/` is built into a static site by [nebula-md](https://github.com/thanoslabs/nebula-md) and published to GitHub Pages on merge to `main` (public repositories only).
+Agent workspace visualizers for the [Herdr](https://herdr.dev) desktop app.
 
-Link between pages with Obsidian-style `[[wikilinks]]`.
+- **RPG:** a pixel-art castle rampart with a day-night sky, where you and each agent are adventurers (wizard, healer, warrior, archer) whose behaviour shows each agent's status. See the [README](https://github.com/thanoslabs/herdr-vis#rpg) for install steps and the [recipe](https://github.com/thanoslabs/herdr-vis/blob/main/rpg/RECIPE.md) for how it is built.
