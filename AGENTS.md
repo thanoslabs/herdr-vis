@@ -17,7 +17,7 @@ Agent workspace visualizers for the [Herdr](https://herdr.dev) desktop app. Each
 .
 ├── idle-rpg/                      # One visualizer
 │   ├── layouts/              # idle-rpg.json, idle-rpg.svg (settings preview)
-│   ├── mods/idle-rpg/             # main.js, mod.json, art/*.png
+│   ├── mods/idle-rpg/             # main.js, rules.js, mod.json, art/*.png
 │   ├── themes/               # idle-rpg.json
 │   ├── RECIPE.md             # Brief another agent could rebuild it from
 │   ├── PLAN.md               # Planning notes for growing it into an idle RPG
