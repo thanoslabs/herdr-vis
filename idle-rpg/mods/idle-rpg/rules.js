@@ -1,18 +1,24 @@
-// Idle RPG's game rules: experience, levels, gold, kill counts, and loading the
-// saved state. Plain functions with no host calls, so main.js does the drawing
-// and these can be run on their own.
+// Idle RPG's game rules: experience, levels, skill points, the blows they buy,
+// gold, kill counts, and loading the saved state. Plain functions with no host
+// calls, so main.js does the drawing and these can be run on their own.
 //
 // Progress never belongs to an agent (agents come and go): it belongs to you
 // and to the four classes. Every point of damage that lands earns experience
-// for the class of whoever dealt it, and for you, who leads the raid. Killing a
-// monster earns gold and counts towards its kind. Levels are worked out from
-// total experience, never stored.
+// for the class of whoever dealt it, and for you, who leads the raid. Each
+// level a class gains earns it a skill point, spent on that class's skills,
+// which make every character on that class hit harder, faster or with a
+// chance of a critical blow. Killing a monster earns gold and counts towards
+// its kind. Levels are worked out from total experience, never stored; skill
+// ranks are stored, and points left are worked out from levels and ranks.
 
 export const CLASSES = ["wizard", "healer", "warrior", "archer"];
-export const KINDS = ["slime", "ogre", "dragon"]; // the keys of MONSTERS in main.js
 export const YOU = "you"; // the person's key in `sprites`, `xp` and as an open card
-export const STATE_VERSION = 1;
-export const MONSTER_HP = 100; // every kind, for now; kept on each monster as `maxHp`
+export const STATE_VERSION = 2;
+// Each kind's HP, kept on a monster as `maxHp` when it turns up. The kinds are
+// the keys of MONSTERS in main.js, which draws them.
+export const MONSTER_HP = { slime: 100, ogre: 300, dragon: 500 };
+export const KINDS = Object.keys(MONSTER_HP);
+const OLD_MONSTER_HP = 100; // what every monster had before HP by kind, for one saved without `maxHp`
 
 // Defaults chosen to be retuned; nothing else depends on their values.
 export const CLASS_XP_PER_HP = 1; // to a class, per point of damage one of its characters deals
@@ -20,6 +26,35 @@ export const PLAYER_XP_PER_HP = 1; // to you, per point of damage anyone in the 
 export const CLASS_LEVEL_XP = 100; // a class goes from level n to n + 1 for CLASS_LEVEL_XP * n
 export const PLAYER_LEVEL_XP = 250; // you go from level n to n + 1 for PLAYER_LEVEL_XP * n
 export const HP_PER_GOLD = 100; // gold on a kill: one per this much of the monster's max HP
+
+// Skills. Every class has the same three for now; CLASS_SKILLS keeps a list per
+// class so one can get its own later. Ranks are per class, so a skill applies
+// to everyone with that class on, agents and you alike.
+export const SKILLS = ["power", "haste", "crit"];
+export const CLASS_SKILLS = Object.fromEntries(CLASSES.map((c) => [c, SKILLS]));
+export const POINTS_PER_LEVEL = 1; // skill points a class earns per level past 1
+export const RANK_COST = 1; // skill points per rank
+export const MAX_RANK = 5;
+export const BASE_DAMAGE = 1; // a blow at Power 0
+export const POWER_DAMAGE = 1; // added to every blow per rank of Power
+export const CRIT_CHANCE = 0.05; // chance of a critical blow per rank of Crit
+export const CRIT_MULTIPLIER = 2; // a critical blow deals this many times the damage
+
+// Attacks run on a clock of TICK_STEP ticks. One attack is ATTACK_PHASES ticks
+// (wind-up, two of strike or flight, impact); the impact then fades for 350ms
+// (main.js), which ends inside the second tick after it. So a character starts
+// an attack at most every MIN_ATTACK_TICKS, and never before its last one is
+// gone.
+export const TICK_STEP = 250; // ms
+export const ATTACK_PHASES = 4;
+export const MIN_ATTACK_TICKS = ATTACK_PHASES + 2;
+// Ticks between the starts of one character's attacks, by rank of Haste: one
+// tick (250ms) less per rank, from 3s at rank 0 to 1.75s at rank 5.
+export const ATTACK_TICKS = [12, 11, 10, 9, 8, 7];
+// Each gap is that many ticks either way off its rank's, at random, so
+// characters on the same rank do not fall into step (narrower where it would
+// go under MIN_ATTACK_TICKS, so the average stays the rank's).
+export const ATTACK_JITTER = 2;
 
 const MAX = Number.MAX_SAFE_INTEGER;
 const MAX_MONSTER_HP = 1e6; // the most a saved monster is believed to have
@@ -78,6 +113,16 @@ export function goldFor(maxHp) {
   return Math.floor(count(maxHp) / HP_PER_GOLD);
 }
 
+// The HP a new monster of `kind` turns up with.
+export function monsterHp(kind) {
+  return MONSTER_HP[kind] ?? OLD_MONSTER_HP;
+}
+
+// A class's skill ranks with every rank at 0: { power: 0, haste: 0, crit: 0 }.
+function noRanks(cls) {
+  return Object.fromEntries((CLASS_SKILLS[cls] ?? []).map((k) => [k, 0]));
+}
+
 // Fresh progress: what a new party starts with.
 export function newProgress() {
   return {
@@ -85,7 +130,87 @@ export function newProgress() {
     gold: 0,
     kills: Object.fromEntries(KINDS.map((k) => [k, 0])),
     xp: Object.fromEntries([YOU, ...CLASSES].map((k) => [k, 0])),
+    skills: Object.fromEntries(CLASSES.map((c) => [c, noRanks(c)])),
   };
+}
+
+// One rank, as a whole number from 0 to MAX_RANK (anything else is 0).
+function rank(ranks, skill) {
+  const r = record(ranks) ? ranks[skill] : 0;
+  return typeof r === "number" && Number.isInteger(r) && r > 0 ? Math.min(r, MAX_RANK) : 0;
+}
+
+// Skill points a class has earned with `xp` experience: POINTS_PER_LEVEL for
+// each level past 1.
+export function pointsEarned(xp) {
+  return (classLevel(xp).level - 1) * POINTS_PER_LEVEL;
+}
+
+// Skill points tied up in a class's `ranks`.
+export function pointsSpent(ranks) {
+  return Object.keys(record(ranks) ? ranks : {}).reduce((sum, k) => sum + rank(ranks, k) * RANK_COST, 0);
+}
+
+// A class's skill points still to spend.
+export function pointsLeft(progress, cls) {
+  return Math.max(0, pointsEarned(progress.xp[cls]) - pointsSpent(progress.skills[cls]));
+}
+
+// Every class's points still to spend, added up (the count on the sign).
+export function pointsLeftAll(progress) {
+  return CLASSES.reduce((sum, c) => sum + pointsLeft(progress, c), 0);
+}
+
+// Whether `cls` can put a point into `skill`: it is one of the class's
+// skills, below MAX_RANK, and the class has the points.
+export function canRaise(progress, cls, skill) {
+  const ranks = progress.skills[cls];
+  return CLASSES.includes(cls) && Boolean(ranks) && CLASS_SKILLS[cls].includes(skill) && rank(ranks, skill) < MAX_RANK && pointsLeft(progress, cls) >= RANK_COST;
+}
+
+// Raises `skill` one rank for `cls` if it can. Returns whether it did.
+export function raise(progress, cls, skill) {
+  if (!canRaise(progress, cls, skill)) return false;
+  progress.skills[cls][skill] = rank(progress.skills[cls], skill) + 1;
+  return true;
+}
+
+// Takes every rank off `cls`, which gets all its points back (free). Returns
+// whether anything changed.
+export function resetSkills(progress, cls) {
+  if (!CLASSES.includes(cls) || pointsSpent(progress.skills[cls]) === 0) return false;
+  progress.skills[cls] = noRanks(cls);
+  return true;
+}
+
+// What each rank gives. `ranks` is a class's ranks; a missing one counts as 0.
+export const damageOf = (ranks) => BASE_DAMAGE + POWER_DAMAGE * rank(ranks, "power");
+export const critChanceOf = (ranks) => CRIT_CHANCE * rank(ranks, "crit");
+export const attackTicksOf = (ranks) => ATTACK_TICKS[rank(ranks, "haste")];
+
+// One blow by a character whose class has `ranks`, given a random number `r`
+// from 0 up to 1: { damage, crit }. It is critical when `r` falls under the
+// crit chance.
+export function blow(ranks, r) {
+  const crit = r < critChanceOf(ranks);
+  return { damage: damageOf(ranks) * (crit ? CRIT_MULTIPLIER : 1), crit };
+}
+
+// How many ticks after one attack starts the next one does, given a random
+// number `r` from 0 up to 1: the rank's gap give or take up to ATTACK_JITTER,
+// evenly, and never under MIN_ATTACK_TICKS.
+export function attackGap(ranks, r) {
+  const base = attackTicksOf(ranks);
+  const spread = Math.max(0, Math.min(ATTACK_JITTER, base - MIN_ATTACK_TICKS));
+  return base - spread + Math.min(2 * spread, Math.floor(r * (2 * spread + 1)));
+}
+
+// How many ticks from now a character who has just joined the fight starts
+// its first attack, given a random number `r`: anywhere in its first gap, so
+// a party that starts together does not attack as one.
+export function firstAttack(ranks, r) {
+  const base = attackTicksOf(ranks);
+  return 1 + Math.min(base - 1, Math.floor(r * base));
 }
 
 // Credits `hp` points of damage that landed, dealt by a character of class
@@ -115,15 +240,28 @@ export function slay(progress, monster) {
 // back to now, so neither can leave a monster that never falls or never leaves.
 function monsterOf(m, now) {
   if (!record(m) || !KINDS.includes(m.kind)) return null;
-  const maxHp = Math.min(count(m.maxHp) || MONSTER_HP, MAX_MONSTER_HP);
+  const maxHp = Math.min(count(m.maxHp) || OLD_MONSTER_HP, MAX_MONSTER_HP);
   const out = { kind: m.kind, hp: Math.min(count(m.hp), maxHp), maxHp, id: count(m.id) };
   if (finite(m.slainAt)) out.slainAt = Math.max(0, Math.min(m.slainAt, now));
   return out;
 }
 
+// A class's saved skill ranks, given its experience `xp`. Each rank must be a
+// whole number from 0 to MAX_RANK, else it is 0. Ranks that would cost more
+// points than the class has earned cannot have been bought: the class gets
+// all its points back instead.
+function ranksOf(saved, cls, xp) {
+  const ranks = Object.fromEntries((CLASS_SKILLS[cls] ?? []).map((k) => {
+    const r = record(saved) ? saved[k] : 0;
+    return [k, typeof r === "number" && Number.isInteger(r) && r >= 0 && r <= MAX_RANK ? r : 0];
+  }));
+  return pointsSpent(ranks) > pointsEarned(xp) ? noRanks(cls) : ranks;
+}
+
 // The saved state as this version keeps it, from whatever was read back:
-// older versions without the progress fields, or anything malformed. Never
-// throws; a bad field falls back to its default, a bad entry is dropped.
+// older versions without the progress fields or skill ranks, or anything
+// malformed. Never throws; a bad field falls back to its default, a bad entry
+// is dropped.
 //
 // State written by a later version keeps its version number: this version can
 // read what it knows of it, but must not save over it (see save in main.js),
@@ -131,6 +269,7 @@ function monsterOf(m, now) {
 export function loadState(saved, now = Date.now()) {
   const s = record(saved) ? saved : {};
   const fresh = newProgress();
+  const xp = Object.fromEntries(Object.keys(fresh.xp).map((k) => [k, count(record(s.xp) ? s.xp[k] : 0)]));
   return {
     version: Math.max(STATE_VERSION, count(s.version)),
     you: point(s.you) ?? { x: 154, y: 16 },
@@ -143,6 +282,8 @@ export function loadState(saved, now = Date.now()) {
     slain: count(s.slain),
     gold: count(s.gold),
     kills: Object.fromEntries(KINDS.map((k) => [k, count(record(s.kills) ? s.kills[k] : 0)])),
-    xp: Object.fromEntries(Object.keys(fresh.xp).map((k) => [k, count(record(s.xp) ? s.xp[k] : 0)])),
+    xp,
+    // version 1 had no skills: every rank starts at 0
+    skills: Object.fromEntries(CLASSES.map((c) => [c, ranksOf(record(s.skills) ? s.skills[c] : undefined, c, xp[c])])),
   };
 }

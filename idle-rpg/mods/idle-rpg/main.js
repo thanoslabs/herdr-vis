@@ -13,23 +13,54 @@
 // pointer; let go to drop it where it is (it falls to the floor). Spots and
 // classes are remembered.
 // Battle mode (the Start Raid / End Raid button by the sign): a random monster stands in the middle
-// with 100 HP and the party forms up around it, warriors up close and everyone
-// else at range. Every few seconds each working agent attacks in its own way
-// (sword swing, arrow, fireball, thrown potion) for 1 HP; when the monster
-// falls another one turns up. Turning it off sends everyone back to their spots.
+// (a slime has 100 HP, an ogre 300, a dragon 500) and the party forms up
+// around it, warriors up close and everyone else at range. Every working agent
+// attacks in its own way (sword swing, arrow, fireball, thrown potion) on its
+// own rhythm, every 3 seconds or less; when the monster falls another one
+// turns up. Turning it off sends everyone back to their spots.
 // Progress (rules.js): every point of damage that lands earns experience for
-// the attacker's class and for you; a kill earns gold. Levels show on the
-// cards and the class choices, gold and kills on the sign.
+// the attacker's class and for you; a kill earns gold. Each class level earns
+// that class a skill point, spent in the skills panel on Power (damage),
+// Haste (attack speed) or Crit (double damage now and then). Levels show on
+// the cards and the class choices, gold, kills and points to spend on the sign.
 // Layout props: { inset } = left edge of the sign (84 leaves room for macOS buttons).
 
 import { View, div, image } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { agents, props, run, setShared, shared, spaces } from "herdr";
-import { CLASSES, MONSTER_HP, STATE_VERSION, YOU, classLevel, credit, loadState, playerLevel, slay } from "./rules.js";
+import {
+  ATTACK_PHASES,
+  CLASSES,
+  CLASS_SKILLS,
+  MAX_RANK,
+  STATE_VERSION,
+  TICK_STEP,
+  YOU,
+  attackGap,
+  attackTicksOf,
+  blow,
+  canRaise,
+  classLevel,
+  credit,
+  critChanceOf,
+  damageOf,
+  firstAttack,
+  loadState,
+  monsterHp,
+  playerLevel,
+  pointsEarned,
+  pointsLeft,
+  pointsLeftAll,
+  pointsSpent,
+  raise,
+  resetSkills,
+  slay,
+} from "./rules.js";
 
 const ART = "mods/idle-rpg/art";
 // shared: { version, you: {x, y}, spots: { <address>: {x, y} }, sprites: { you | <address>: <class> },
-//   seen, battle, monster, slain, gold, kills: { <kind>: n }, xp: { you | <class>: n } } (see loadState)
+//   seen, battle, monster, slain, gold, kills: { <kind>: n }, xp: { you | <class>: n },
+//   skills: { <class>: { power, haste, crit } } } (see loadState)
 const STATE = "idle-rpg.state";
 const randomClass = () => CLASSES[Math.floor(Math.random() * CLASSES.length)];
 const STATUS = {
@@ -67,7 +98,7 @@ const YOU_Y = [12, FLOOR_H - 24];
 const CRITTER_Y = [16, FLOOR_H - 42];
 const CARD_W = 232;
 // Battle mode. Sizes are on-screen px (art px x 4, plus the outline). A new
-// kind also goes in KINDS in rules.js, or its kills are not counted.
+// kind also needs its HP in MONSTER_HP in rules.js, which lists the kinds.
 const MONSTERS = {
   slime: { name: "Slime", w: 136, h: 104, core: { x: 0, y: 44, r: 18, half: 60 } },
   ogre: { name: "Ogre", w: 200, h: 200, core: { x: 0, y: 86, r: 24, half: 62 } },
@@ -77,7 +108,7 @@ const MONSTERS = {
 // its centre line and above its feet, how far a blow may stray from it, and
 // half the bulk's width, which is how close a warrior stands. The picture is
 // often much wider than that (the dragon's head, wings and tail).
-const ATTACK_MS = 3000; // each working agent hits once per beat, for 1 HP
+const WATCH_MS = 1000; // how often to look for a monster due, or someone ready to attack
 const RESPAWN_MS = 9000; // how long a fallen monster lies there before the next
 const MONSTER_Y = 108; // where its feet are on the floor
 const BAR_W = 120;
@@ -85,16 +116,21 @@ const MELEE = 90; // how close to the monster's bulk a warrior must be to reach 
 const SWORD = 44; // how far outside the bulk a warrior stands, so the swing lands on it
 const RANGE = 360; // how far the ranged classes stand from the monster: five characters
 // An attack plays in phases, one TICK_STEP each: 1 is the wind-up, 2 and 3 the
-// two halves of the strike or flight, 4 the impact, 0 rest. Everyone starts a
-// different number of ticks into the beat, so the party does not move as one.
-const TICK_STEP = 250;
+// two halves of the strike or flight, 4 (ATTACK_PHASES) the impact, 0 rest.
+// Each attacker keeps its own rhythm (see tick), so the party does not move as one.
 const FLIGHT = TICK_STEP * 2;
-const STAGGER = 5; // how many different starting ticks there are
-const LAST_TICK = STAGGER - 1 + 4; // the tick on which the latest attacker's impact ends
+const POP_FADE = 350; // an impact fades out this long; rules.js counts on it being under two ticks
 const BLINK_MS = 5200; // monsters blink this often
 const ROAR_MS = 14000; // and the ogre roars this often
 const MOVE = { duration: 700, easing: "ease-in-out" }; // walking between spots and the formation
 const CHEER_MS = 2400; // a level-up note over someone's head rises and fades this long
+const CRIT_MS = 1200; // a critical blow's number rises and fades this long
+// What a class's skill ranks give, in words, for the skills panel.
+const SKILL_TEXT = {
+  power: (ranks) => `${damageOf(ranks)} damage`,
+  haste: (ranks) => `attacks every ${(attackTicksOf(ranks) * TICK_STEP) / 1000}s`,
+  crit: (ranks) => `${Math.round(critChanceOf(ranks) * 100)}% crit`,
+};
 const GOLD = "#ffd166";
 
 function clamp(n, lo, hi) {
@@ -149,12 +185,18 @@ export default class RaidParty extends View {
     this.seen = saved.seen; // <address>: when it was last here
     this.battle = saved.battle;
     this.monster = saved.monster; // { kind, hp, maxHp, id, slainAt? }
-    this.progress = { slain: saved.slain, gold: saved.gold, kills: saved.kills, xp: saved.xp };
+    this.progress = { slain: saved.slain, gold: saved.gold, kills: saved.kills, xp: saved.xp, skills: saved.skills };
     this.cheerSeq = 0;
-    this.cheers = {}; // YOU | <address>: { lines, id, at } while a level-up note shows
-    this.unsaved = 0; // damage dealt since the last save
-    this.tick = null; // how many TICK_STEPs into the current beat's attacks; null between beats
-    this.beat = 0;
+    // These three are keyed by address, so they have no prototype to collide with.
+    this.cheers = Object.create(null); // YOU | <address>: { lines, id, at } while a level-up note shows
+    this.crits = Object.create(null); // YOU | <address>: { n, seed, id, at } while a critical blow's number shows
+    // The attack clock (see tick), in memory only: TICK_STEPs counted since the
+    // view started, and each attacker's rhythm, { start, next, seed }: the tick
+    // its attack in progress started (null between attacks), the tick the next
+    // one is due, and the start of the latest, which places its blow.
+    this.clock = 0;
+    this.rhythm = Object.create(null);
+    this.ticking = false; // whether the clock is running
     this.blink = false;
     this.roar = false;
     // A blink and a roar are each two renders: on, then off a moment later.
@@ -169,18 +211,11 @@ export default class RaidParty extends View {
     };
     cx.timer.every(BLINK_MS, flick("blink", 170, () => !this.roar));
     cx.timer.every(ROAR_MS, flick("roar", 1100, () => this.monster.kind === "ogre"));
-    cx.timer.every(ATTACK_MS, (cx) => {
+    cx.timer.every(WATCH_MS, (cx) => {
       // nothing happens while the scene is too narrow to show the fight
       if (!this.battle || Math.max(320, this.size.width) < 640) return;
-      if (this.fight()) return cx.notify(); // a new monster walked in
-      if (!(this.monster?.hp > 0)) return;
-      const keys = agents()
-        .filter((a) => a.status === "working")
-        .map((a) => a.address);
-      if (keys.length && this.joins(Math.max(320, this.size.width))) keys.push(YOU); // you fight alongside them
-      if (!keys.length) return;
-      this.strike(cx, keys);
-      cx.notify();
+      if (this.fight()) cx.notify(); // a new monster walked in
+      this.wake(cx);
     });
     if (!CLASSES.includes(this.sprites[YOU])) {
       this.sprites[YOU] = randomClass();
@@ -190,9 +225,17 @@ export default class RaidParty extends View {
     this.drag = null; // { address, x, y, vx, last } while a critter dangles
     this.card = null; // whose card is open: an agent's address, or YOU
     this.codex = false; // the list of kills by kind is open under the sign
+    this.skillsOpen = null; // the class the skills panel under the sign shows, while it is open
     this.picking = false; // the open card is showing the class choices
     this.walking = false;
     this.walkTask = null;
+  }
+
+  // Combat is only saved on a kill, so a fight in progress is saved once more
+  // as the layout goes (switching layouts, or quitting, when the host allows
+  // it the time).
+  close() {
+    this.save();
   }
 
   // Agents can be missing for a while (the app just started, a machine is
@@ -216,41 +259,46 @@ export default class RaidParty extends View {
       monster: this.monster,
       ...this.progress,
     });
-    this.unsaved = 0;
   }
 
-  // Brings in a monster if one is due, otherwise lands a blow from each of
-  // `keys` (1 HP each) on the one there. Only blows that land earn experience:
-  // a monster with 2 HP left takes two of five. Returns whether anything
-  // changed. HP and experience are saved every tenth point and on a kill, not
-  // on every hit.
-  fight(keys = []) {
+  // Brings in a monster if one is due, otherwise lands `blows` on the one
+  // there, in order: each { key, damage, crit, seed } (see blow in rules.js).
+  // Only damage that lands earns experience: a monster with 3 HP left takes 3
+  // of a 4-point blow, and nothing of the blows after it. Returns whether
+  // anything changed. HP and experience are saved only on a kill (and the
+  // spawn): saving re-renders every mod in the window, so not on hits. What a
+  // fight earns since the last kill is lost if the app closes mid-fight.
+  fight(blows = []) {
     if (!this.battle) return false;
     const m = this.monster;
     if (!m || !MONSTERS[m.kind] || (m.hp <= 0 && Date.now() - (m.slainAt ?? 0) >= RESPAWN_MS)) {
       const kinds = Object.keys(MONSTERS).filter((k) => k !== m?.kind);
-      this.monster = { kind: kinds[Math.floor(Math.random() * kinds.length)], hp: MONSTER_HP, maxHp: MONSTER_HP, id: (m?.id ?? 0) + 1 };
+      const kind = kinds[Math.floor(Math.random() * kinds.length)];
+      this.monster = { kind, hp: monsterHp(kind), maxHp: monsterHp(kind), id: (m?.id ?? 0) + 1 };
       this.save();
       return true;
     }
     // no blow lands while the scene is too narrow to show the fight
     if (Math.max(320, this.size.width) < 640) return false;
-    const landed = keys.slice(0, Math.max(0, m.hp));
-    if (!landed.length) return false;
-    m.hp -= landed.length;
-    this.unsaved += landed.length;
-    for (const key of landed) {
-      for (const up of credit(this.progress, this.sprites[key])) {
+    let landed = false;
+    for (const { key, damage, crit, seed } of blows) {
+      if (m.hp <= 0) break;
+      const dealt = Math.min(damage, m.hp);
+      m.hp -= dealt;
+      landed = true;
+      if (crit) this.crits[key] = { n: damage, seed, id: (this.cheerSeq += 1), at: Date.now() };
+      for (const up of credit(this.progress, this.sprites[key], dealt)) {
         // a class's level-up shows over whoever earned it, yours over you
         if (up === YOU) this.cheer(YOU, `Level ${playerLevel(this.progress.xp[YOU]).level}`);
         else this.cheer(key, `${capital(up)} ${classLevel(this.progress.xp[up]).level}`);
       }
     }
+    if (!landed) return false;
     if (m.hp === 0) {
       m.slainAt = Date.now();
       slay(this.progress, m);
+      this.save();
     }
-    if (m.hp === 0 || this.unsaved >= 10) this.save();
     return true;
   }
 
@@ -270,25 +318,83 @@ export default class RaidParty extends View {
     return this.sprites[YOU] !== "warrior" || Math.abs(this.you.x - (W / 2 + kind.core.x)) - kind.core.half <= MELEE;
   }
 
-  // Plays one beat of attacks by `keys`: counts `tick` up, re-rendering on
-  // each. Each attacker's point of damage comes off on the tick its blow lands.
-  strike(cx, keys) {
-    const beat = (this.beat += 1);
-    this.tick = 0;
-    for (let i = 1; i <= LAST_TICK + 1; i++) {
-      cx.timer.after(i * TICK_STEP, (cx) => {
-        if (beat !== this.beat) return;
-        this.tick = i > LAST_TICK ? null : i;
-        this.fight(keys.filter((key) => this.phaseOf(key) === 4));
-        cx.notify();
-      });
-    }
+  // Who attacks now: every working agent, and you alongside them if you can
+  // reach (see joins). Nobody while battle mode is off, the scene is too
+  // narrow to show the fight, or the monster is down.
+  attackers() {
+    const W = Math.max(320, this.size.width);
+    if (!this.battle || W < 640 || !MONSTERS[this.monster?.kind] || !(this.monster.hp > 0)) return [];
+    const keys = agents()
+      .filter((a) => a.status === "working")
+      .map((a) => a.address);
+    // you fight alongside them, once you have arrived: `you` is already the
+    // spot you are walking to
+    if (keys.length && !this.walking && this.joins(W)) keys.push(YOU);
+    return keys;
   }
 
-  // A number from 0 to n - 1 for one attacker on this beat: the same all
-  // through the beat, different on the next.
-  roll(key, salt, n) {
-    let h = 2166136261 ^ Math.imul(this.beat + 1, 40503) ^ Math.imul(salt, 2246822519);
+  // The skill ranks of the class someone has on (undefined counts as all 0).
+  ranksOf(key) {
+    return this.progress.skills[this.sprites[key]];
+  }
+
+  // Starts the attack clock if it is stopped and anyone is ready to attack.
+  // It runs one tick every TICK_STEP for as long as tick() says, so only one
+  // chain of timers is ever running; one that fails stops, and the watch
+  // starts it again.
+  wake(cx) {
+    if (this.ticking || !this.attackers().length) return;
+    this.ticking = true;
+    const next = (cx) => {
+      let more = false;
+      try {
+        more = this.tick(cx);
+      } finally {
+        if (more) cx.timer.after(TICK_STEP, next);
+        else this.ticking = false;
+      }
+    };
+    cx.timer.after(TICK_STEP, next);
+  }
+
+  // One tick of the attack clock. Each attacker keeps its own rhythm: someone
+  // who joins starts somewhere in their first gap, and each attack starts the
+  // next one's countdown (attackGap: their class's Haste, give or take a tick
+  // or two, so nobody falls into step). An attack runs ATTACK_PHASES ticks,
+  // then one of rest; its blow lands on the last phase. Whoever stops
+  // attacking (stops working, walks out of reach, the monster falls) loses
+  // their rhythm. Re-renders only while someone is mid-attack or something
+  // changed. Returns whether to keep ticking: not once nobody is attacking.
+  tick(cx) {
+    const t = (this.clock += 1);
+    const keys = this.attackers();
+    let changed = false;
+    for (const key of Object.keys(this.rhythm)) {
+      if (keys.includes(key)) continue;
+      if (this.rhythm[key].start !== null) changed = true; // cut off mid-attack: draw them at rest
+      delete this.rhythm[key];
+    }
+    for (const key of keys) {
+      const ranks = this.ranksOf(key);
+      const r = (this.rhythm[key] ??= { start: null, next: t + firstAttack(ranks, Math.random()), seed: 0 });
+      if (r.start !== null && t - r.start > ATTACK_PHASES) r.start = null; // its rest has been drawn
+      if (r.start === null && t >= r.next) {
+        r.start = r.seed = t;
+        r.next = t + attackGap(ranks, Math.random());
+      }
+    }
+    const blows = keys
+      .filter((key) => this.phaseOf(key) === ATTACK_PHASES)
+      .map((key) => ({ key, seed: this.rhythm[key].seed, ...blow(this.ranksOf(key), Math.random()) }));
+    if (blows.length && this.fight(blows)) changed = true;
+    if (changed || keys.some((key) => this.rhythm[key].start !== null)) cx.notify();
+    return keys.length > 0;
+  }
+
+  // A number from 0 to n - 1 for one attacker's attack that started on tick
+  // `seed`: the same all through the attack, different on the next.
+  roll(key, seed, salt, n) {
+    let h = 2166136261 ^ Math.imul(seed + 1, 40503) ^ Math.imul(salt, 2246822519);
     for (const ch of String(key)) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
     // stir it, so that keys one character apart land far apart
     h = Math.imul(h ^ (h >>> 16), 0x85ebca6b);
@@ -298,9 +404,19 @@ export default class RaidParty extends View {
 
   // Which phase of its attack someone is in right now.
   phaseOf(key) {
-    if (this.tick === null) return 0;
-    const k = this.tick - this.roll(key, 1, STAGGER);
-    return k < 0 || k > 3 ? 0 : k + 1;
+    const r = this.rhythm[key];
+    const k = r && r.start !== null ? this.clock - r.start : -1;
+    return k >= 0 && k < ATTACK_PHASES ? k + 1 : 0;
+  }
+
+  // Where the blow of someone's attack that started on tick `seed` lands:
+  // around the middle of the monster's bulk, a little different each attack.
+  hitOf(key, seed, W, kind) {
+    const { x, y, r } = kind.core;
+    return {
+      x: Math.round(W / 2 + x + this.roll(key, seed, 2, 2 * r + 1) - r),
+      y: Math.round(MONSTER_Y - y + this.roll(key, seed, 3, r + 1) - r / 2),
+    };
   }
 
   // Where everyone stands for the fight: warriors beside the monster, the
@@ -341,12 +457,7 @@ export default class RaidParty extends View {
     const side = d > 0 ? "r" : "l";
     const phase = this.phaseOf(who.key);
     const flying = phase === 2 || phase === 3;
-    // blows land around the middle of the monster's bulk, a little different each time
-    const { x: cx0, y: cy0, r } = kind.core;
-    const hit = {
-      x: Math.round(W / 2 + cx0 + this.roll(who.key, 2, 2 * r + 1) - r),
-      y: Math.round(MONSTER_Y - cy0 + this.roll(who.key, 3, r + 1) - r / 2),
-    };
+    const hit = this.hitOf(who.key, this.rhythm[who.key]?.seed ?? 0, W, kind);
     const art = (name, w, h) => image(`${ART}/${name}.png`).w(w).h(h);
     const pop = (id, name, w, h, at, on) =>
       div()
@@ -355,7 +466,7 @@ export default class RaidParty extends View {
         .left(at.x - w / 2)
         .top(at.y - h / 2)
         .opacity(on ? 1 : 0)
-        .transition("opacity", { duration: on ? 20 : 350, easing: "ease-out" })
+        .transition("opacity", { duration: on ? 20 : POP_FADE, easing: "ease-out" })
         .child(art(name, w, h));
     const shot = (name, w, h, hand, inner = (el) => el) =>
       div()
@@ -693,7 +804,7 @@ export default class RaidParty extends View {
   }
 
   // A level-up note over someone whose feet are at x, y: it pops in, then on
-  // the next render (the next tick of the beat) rises and fades natively.
+  // the next render (the next tick of the attack clock) rises and fades natively.
   cheerNote(key, x, y) {
     const c = this.cheers[key];
     const fresh = Date.now() - c.at < TICK_STEP * 0.8;
@@ -710,6 +821,26 @@ export default class RaidParty extends View {
       .transition("top", { duration: CHEER_MS, easing: "ease-out" })
       .transition("opacity", { duration: CHEER_MS, easing: "ease-in" })
       .children(c.lines.map((line) => div().px(5).rounded(6).bg("#000000a0").text_size(10).font_semibold().text_color(GOLD).child(`${line}!`)));
+  }
+
+  // A critical blow's damage, a small gold number where it landed: it pops in
+  // like a level-up note, then on the next render (the attacker's rest) rises
+  // and fades natively.
+  critNote(key, W, kind) {
+    const c = this.crits[key];
+    const at = this.hitOf(key, c.seed, W, kind);
+    const fresh = Date.now() - c.at < TICK_STEP * 0.8;
+    return h_flex()
+      .id(`idle-rpg-crit-${key}-${c.id}`)
+      .absolute()
+      .left(at.x - 20)
+      .top(fresh ? at.y - 30 : at.y - 48)
+      .w(40)
+      .justify_center()
+      .opacity(fresh ? 1 : 0)
+      .transition("top", { duration: CRIT_MS, easing: "ease-out" })
+      .transition("opacity", { duration: CRIT_MS, easing: "ease-in" })
+      .child(div().px(4).rounded(5).bg("#000000a0").text_size(10).font_semibold().text_color(GOLD).child(`${c.n}!`));
   }
 
   // Night on the rampart: darkness over the wall, the floor and everyone on it
@@ -804,8 +935,9 @@ export default class RaidParty extends View {
   }
 
   // One line of a card: a level, and a bar and numbers for the way to the next.
-  // `lv` is { level, into, need } (see levelOf).
-  meter(label, lv) {
+  // `lv` is { level, into, need } (see levelOf). `spare`, a class's skill
+  // points to spend, shows as a star and the number when there are any.
+  meter(label, lv, spare = 0) {
     return h_flex()
       .gap(6)
       .items_center()
@@ -820,7 +952,19 @@ export default class RaidParty extends View {
           .bg("#0b1626")
           .child(div().h(5).rounded(2).w(`${Math.floor((lv.into / lv.need) * 100)}%`).bg(GOLD)),
       )
-      .child(div().flex_none().text_color("#8ea3bb").child(`${lv.into}/${lv.need}`));
+      .child(div().flex_none().text_color("#8ea3bb").child(`${lv.into}/${lv.need}`))
+      .when(spare > 0, (el) =>
+        el.child(
+          h_flex()
+            .flex_none()
+            .gap(2)
+            .items_center()
+            .font_semibold()
+            .text_color(GOLD)
+            .child(image(`${ART}/i-star.png`).w(18).h(18))
+            .child(div().child(String(spare))),
+        ),
+      );
   }
 
   // The four classes as buttons, each with its level; the current one is ringed.
@@ -957,12 +1101,23 @@ export default class RaidParty extends View {
       .border_color("#31506f")
       .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
       .child(h_flex().gap(8).items_start().child(this.portrait(key)).child(facts))
-      // your own level, then the level of the class this character has on
+      // your own level, then the level of the class this character has on,
+      // which opens the skills panel on that class
       .child(
         v_flex()
           .gap(3)
           .when(!a, (el) => el.child(this.meter("You", playerLevel(this.progress.xp[YOU]))))
-          .child(this.meter(capital(klass), classLevel(this.progress.xp[klass]))),
+          .child(
+            this.meter(capital(klass), classLevel(this.progress.xp[klass]), pointsLeft(this.progress, klass))
+              .id("idle-rpg-card-skills")
+              .rounded(4)
+              .cursor_pointer()
+              .hover((st) => st.bg("#ffffff14"))
+              .on_click((_e, cx) => {
+                this.openSkills(klass);
+                cx.notify();
+              }),
+          ),
       )
       .when(this.picking, (el) => el.child(this.picker(key)))
       .when(Boolean(a), (el) =>
@@ -1004,7 +1159,7 @@ export default class RaidParty extends View {
     this.fighting = Boolean(foeKind);
     this.at = foeKind ? this.formation(list, W, foeKind) : this.spots;
     const youDir = you.x <= W / 2 + (foeKind?.core.x ?? 0) ? 1 : -1; // which way the monster is from you
-    this.youFights = hits > 0 && this.joins(W);
+    this.youFights = hits > 0 && !this.walking && this.joins(W);
     this.struck = (this.youFights && this.phaseOf(YOU) === 4) || list.some((a) => a.status === "working" && this.phaseOf(a.address) === 4);
     this.youDir = youDir;
     const actors = [{ y: you.y, draw: () => [this.you_()] }, { y: MONSTER_Y, draw: () => this.foe(W, hits) }];
@@ -1024,9 +1179,15 @@ export default class RaidParty extends View {
       const s = key === YOU ? !this.walking && you : list.some((a) => a.address === key && this.drag?.address !== key) && this.at[key];
       if (s) actors.push({ y: FLOOR_H + 1, draw: () => [this.cheerNote(key, s.x, s.y)] });
     }
+    for (const [key, c] of Object.entries(this.crits)) {
+      if (Date.now() - c.at > CRIT_MS + 1000) delete this.crits[key];
+      else if (foeKind) actors.push({ y: FLOOR_H + 1, draw: () => [this.critNote(key, W, foeKind)] });
+    }
     actors.sort((p, q) => p.y - q.y);
 
     const { slain, gold } = this.progress;
+    const spare = pointsLeftAll(this.progress); // skill points to spend, all classes together
+    const earned = CLASSES.some((c) => pointsEarned(this.progress.xp[c]) > 0);
     const counts = tally(list);
     // one count on the sign: a small icon and its number
     const stat = (art, w, h, n) =>
@@ -1126,16 +1287,19 @@ export default class RaidParty extends View {
         if (pr.kind === YOU) {
           if (still) {
             this.codex = false;
+            this.skillsOpen = null;
             this.card = this.card === YOU ? null : YOU;
             this.picking = false;
           }
         } else if (pr.kind === "critter") {
           this.codex = false;
+          this.skillsOpen = null;
           this.card = this.card === pr.address ? null : pr.address;
           this.picking = false;
         } else if (still) {
           this.card = null;
           this.codex = false;
+          this.skillsOpen = null;
           this.walkTo(this.point(e), W, cx);
         }
         this.press = null;
@@ -1180,11 +1344,36 @@ export default class RaidParty extends View {
                           .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
                           .on_click((_e, cx) => {
                             this.codex = !this.codex;
-                            if (this.codex) this.card = null; // it would lie over the card
+                            if (this.codex) {
+                              // only one panel or card at a time
+                              this.skillsOpen = this.card = null;
+                              this.picking = false;
+                            }
                             cx.notify();
                           }),
                       )
                       .child(stat("i-coin", 18, 18, gold)),
+                  )
+                  // once any class has a point, a star with the points to spend
+                  // opens the skills panel; gold while there are some, dim when not
+                  .when(earned, (el) =>
+                    el.child(
+                      stat("i-star", 18, 18, spare)
+                        .id("idle-rpg-points")
+                        .px(3)
+                        .rounded(4)
+                        .opacity(spare > 0 || this.skillsOpen ? 1 : 0.55)
+                        .text_color(spare > 0 ? GOLD : "#d5e3f0")
+                        .bg(this.skillsOpen ? "#ffffff30" : spare > 0 ? "#ffd16630" : "#ffffff00")
+                        .cursor_pointer()
+                        .hover((st) => st.bg("#ffffff30"))
+                        .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+                        .on_click((_e, cx) => {
+                          // on the first class with points to spend, else your own
+                          this.openSkills(this.skillsOpen ? null : (CLASSES.find((c) => pointsLeft(this.progress, c) > 0) ?? this.sprites[YOU]));
+                          cx.notify();
+                        }),
+                    ),
                   ),
               ),
           )
@@ -1206,14 +1395,26 @@ export default class RaidParty extends View {
                 this.codex = false;
                 if (this.battle) this.fight(); // someone to fight straight away
                 this.save();
+                this.wake(cx);
                 cx.notify();
               })
               .child(this.battle ? "End Raid" : "Start Raid"),
           ),
       )
       .child(floor)
-      // last, so it lies over the floor and everyone on it
-      .when(this.codex && this.battle, (el) => el.child(this.codexCard(props()?.inset ?? 84)));
+      // last, so they lie over the floor and everyone on it
+      .when(this.codex && this.battle, (el) => el.child(this.codexCard(props()?.inset ?? 84)))
+      .when(CLASSES.includes(this.skillsOpen), (el) => el.child(this.skillsCard(props()?.inset ?? 84)));
+  }
+
+  // Opens the skills panel on class `cls` (null closes it), closing the codex
+  // and any card: only one of them is open at a time.
+  openSkills(cls) {
+    this.skillsOpen = cls;
+    if (!cls) return;
+    this.codex = false;
+    this.card = null;
+    this.picking = false;
   }
 
   // The codex, under the sign: every kind of monster and how many have fallen.
@@ -1275,5 +1476,123 @@ export default class RaidParty extends View {
         }),
       )
       .when(slain > known, (el) => el.child(line(div(), "Before the codex", slain - known)));
+  }
+
+  // The skills panel, under the sign like the codex: the four classes to pick
+  // from, each with its level and any points it has to spend; then for the
+  // one picked, its points, a Reset that gives them all back, and a line per
+  // skill with its rank, what it gives now, and a + that spends a point on it.
+  // Short enough for the scene at its lowest (230px, the sign taking 54).
+  skillsCard(left) {
+    const cls = this.skillsOpen;
+    const ranks = this.progress.skills[cls];
+    const spare = pointsLeft(this.progress, cls);
+    const spent = pointsSpent(ranks) > 0;
+    // a small button: live, or dimmed and dead
+    const button = (id, label, live, act) =>
+      div()
+        .id(id)
+        .flex_none()
+        .px(5)
+        .rounded(5)
+        .text_size(10)
+        .font_semibold()
+        .bg(live ? "#5cc8ff" : "#ffffff0a")
+        .text_color(live ? "#06243a" : "#5d7088")
+        .when(live, (el) =>
+          el
+            .cursor_pointer()
+            .hover((st) => st.bg("#8ad8ff"))
+            .on_click((_e, cx) => {
+              if (act()) this.save(); // a point spent or given back is saved straight away
+              cx.notify();
+            }),
+        )
+        .child(label);
+    const tab = (c) => {
+      const n = pointsLeft(this.progress, c);
+      return v_flex()
+        .id(`idle-rpg-skills-${c}`)
+        .flex_1()
+        .items_center()
+        .py(2)
+        .rounded(6)
+        .border(1)
+        .border_color(c === cls ? "#5cc8ff" : n > 0 ? "#ffd16660" : "#00000000")
+        .bg(c === cls ? "#5cc8ff22" : "#ffffff0a")
+        .cursor_pointer()
+        .hover((st) => st.bg("#ffffff1c"))
+        .on_click((_e, cx) => {
+          this.skillsOpen = c;
+          cx.notify();
+        })
+        .child(image(`${ART}/${c}.png`).w(24).h(24))
+        .child(
+          h_flex()
+            .gap(3)
+            .text_size(9)
+            .font_semibold()
+            .child(div().text_color(CREAM).child(`Lv ${classLevel(this.progress.xp[c]).level}`))
+            .when(n > 0, (el) => el.child(div().text_color(GOLD).child(`+${n}`))),
+        );
+    };
+    const skill = (k) =>
+      h_flex()
+        .gap(6)
+        .items_center()
+        .child(div().w(38).flex_none().text_color("#dbe7f3").child(capital(k)))
+        .child(div().w(22).flex_none().font_semibold().text_color(GOLD).child(`${ranks[k]}/${MAX_RANK}`))
+        .child(div().flex_1().min_w(0).truncate().text_size(10).text_color("#8ea3bb").child(SKILL_TEXT[k]?.(ranks) ?? ""))
+        .child(button(`idle-rpg-skill-${k}`, "+", canRaise(this.progress, cls, k), () => raise(this.progress, cls, k)));
+    return v_flex()
+      .id("idle-rpg-skills")
+      .absolute()
+      .left(left)
+      .top(54)
+      .w(CARD_W)
+      .p(8)
+      .gap(3)
+      .rounded(8)
+      .bg("#101a2cf0")
+      .border(1)
+      .border_color("#ffffff24")
+      .text_size(11)
+      .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+      .child(
+        h_flex()
+          .gap(6)
+          .items_center()
+          .child(image(`${ART}/i-star.png`).w(18).h(18))
+          .child(div().flex_1().text_size(12).font_semibold().text_color("#ffffff").child("Skills"))
+          .child(
+            div()
+              .id("idle-rpg-skills-x")
+              .px(5)
+              .rounded(5)
+              .text_color("#8ea3bb")
+              .cursor_pointer()
+              .hover((st) => st.bg("#ffffff1c"))
+              .on_click((_e, cx) => {
+                this.skillsOpen = null;
+                cx.notify();
+              })
+              .child("×"),
+          ),
+      )
+      .child(h_flex().gap(4).children(CLASSES.map(tab)))
+      .child(
+        h_flex()
+          .gap(6)
+          .items_center()
+          .child(
+            div()
+              .flex_1()
+              .truncate()
+              .text_color(spare > 0 ? GOLD : "#8ea3bb")
+              .child(`${capital(cls)}: ${spare > 0 ? `${spare} point${spare === 1 ? "" : "s"} to spend` : "no points to spend"}`),
+          )
+          .child(button("idle-rpg-skills-reset", "Reset", spent, () => resetSkills(this.progress, cls))),
+      )
+      .children((CLASS_SKILLS[cls] ?? []).map(skill));
   }
 }
