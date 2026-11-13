@@ -753,7 +753,6 @@ export default class RaidParty extends View {
     const pose = this.fighting
       ? div().relative().w(72).h(72).child(div().absolute().left(dir > 0 ? 0 : -24).top(0).child(image(`${ART}/${c}-${frame}-${dir > 0 ? "r" : "l"}.png`).w(96).h(72)))
       : image(`${ART}/${c}.png`).w(72).h(72);
-    const who = a.program?.name ?? a.app ?? "agent";
     const where = `${a.space_name} · ${a.tab_name}`;
     const open = this.card === a.address;
     return [
@@ -798,8 +797,8 @@ export default class RaidParty extends View {
         .top(y + 11)
         .w(CELL_W)
         .items_center()
-        .child(div().max_w(CELL_W - 4).px(5).rounded(7).bg("#00000066").truncate().text_size(10).font_semibold().text_color(CREAM).child(who))
-        .child(div().max_w(CELL_W - 4).truncate().text_size(10).text_color("#2a1a0c").child(where)),
+        // named for where it works; what kind of agent it is, is on its card
+        .child(div().max_w(CELL_W - 4).px(5).rounded(7).bg("#00000066").truncate().text_size(10).font_semibold().text_color(CREAM).child(where)),
     ];
   }
 
@@ -1054,7 +1053,7 @@ export default class RaidParty extends View {
       .gap(6)
       .items_center()
       .child(div().w(8).h(8).rounded(4).flex_none().bg(color))
-      .child(div().flex_1().truncate().text_size(12).font_semibold().text_color("#ffffff").child(a ? (a.program?.name ?? a.app ?? "Agent") : "You"))
+      .child(div().flex_1().truncate().text_size(12).font_semibold().text_color("#ffffff").child(a ? `${a.space_name} · ${a.tab_name}` : "You"))
       .child(
         div()
           .id("idle-rpg-card-x")
@@ -1081,8 +1080,8 @@ export default class RaidParty extends View {
             ? `${ago(tab.changed_at)} ago`
             : "";
       facts = facts
+        .child(row("Agent", a.program?.name ?? a.app ?? "Agent"))
         .child(row("Status", since ? `${word} ${since}` : word))
-        .child(row("Where", `${a.space_name} · ${a.tab_name}`))
         .child(row("Doing", a.title || "—"));
     } else {
       facts = facts.child(row("Class", capital(klass)));
