@@ -87,17 +87,6 @@ jobs:
           git tag -a "${VERSION}" -m "Release ${VERSION}"
           git push origin "refs/tags/${VERSION}"
 
-      # TODO(project): build and publish release artifacts for this version, e.g.:
-      #   - docker build -t <registry>/<image>:${VERSION} . && docker push <registry>/<image>:${VERSION}
-      #   - go build / goreleaser release
-      #   - npm publish / cargo publish
-      # Then attach files to the release with: gh release upload "${VERSION}" <files...>
-      #
-      # NOTE: pushes/creations made with the default GITHUB_TOKEN do NOT trigger
-      # other workflows (e.g. on: push of tags, on: release). If release events
-      # must fan out to further automation, use a PAT or a GitHub App token
-      # (see actions/create-github-app-token in the Renovate workflow).
-
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}

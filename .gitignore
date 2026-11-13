@@ -1,5 +1,3 @@
-# Git ignore
-
 # Environment and secrets
 .env
 .env.local
@@ -13,21 +11,6 @@ Thumbs.db
 
 # Logs
 *.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# Dependencies
-node_modules/
-vendor/
-
-# Build outputs
-dist/
-build/
-*.jar
-*.war
-*.zip
-*.tar.gz
 
 # IDE
 .idea/
@@ -36,28 +19,11 @@ build/
 *.swo
 *~
 
-# Testing
-coverage/
-.nyc_output/
-
 # Python
 __pycache__/
 *.py[cod]
-*$py.class
-*.so
-.Python
 venv/
 .venv/
-.env
-
-# Go
-*.exe
-*.exe~
-*.dll
-*.so
-*.dylib
-/free-games-test
-/free-games
 
 # Misc
 *.tmp

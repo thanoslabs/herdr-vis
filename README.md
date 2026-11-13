@@ -1,7 +1,6 @@
 # herdr-vis
 
 [![Release](https://img.shields.io/github/v/release/thanoslabs/herdr-vis?sort=semver&display_name=tag)](https://github.com/thanoslabs/herdr-vis/releases/latest)
-[![Docs](https://github.com/thanoslabs/herdr-vis/actions/workflows/docs.yaml/badge.svg?branch=main)](https://thanoslabs.github.io/herdr-vis/)
 [![Renovate](https://img.shields.io/badge/renovate-enabled-brightgreen?logo=renovatebot)](https://github.com/thanoslabs/herdr-vis/pulls?q=is%3Apr+author%3Aapp%2Frenovate)
 [![License: MIT](https://img.shields.io/github/license/thanoslabs/herdr-vis)](LICENSE)
 
@@ -63,8 +62,7 @@ Alternatively, ask your agent inside Herdr to read `~/.config/herdr-app/AGENTS.m
 │   ├── themes/      # rpg.json
 │   ├── RECIPE.md    # the brief the layout is built from
 │   └── preview.png
-├── docs/            # documentation site source (nebula-md)
-└── .github/         # release, docs and Renovate workflows
+└── .github/         # CI, release and Renovate workflows
 ```
 
 ## License
