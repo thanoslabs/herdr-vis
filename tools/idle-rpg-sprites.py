@@ -436,6 +436,15 @@ icon("i-coin.png", [                                    # gold
     ".gyyyg.",
     "..ggg..",
 ], {"g": "#c8891e", "y": "#f2c14e", "h": "#fff0b0"})
+icon("i-star.png", [                                    # skill points to spend
+    "...y...",
+    "..yhy..",
+    "yyyhyyy",
+    ".yhhhy.",
+    "..yyy..",
+    ".yy.yy.",
+    ".y...y.",
+], {"y": "#ffd166", "h": "#fff6cf"})
 
 # ---- Monsters (battle mode): drawn from shapes, outlined like the sprites ----
 class Pix:
