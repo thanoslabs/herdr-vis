@@ -150,11 +150,15 @@ export default class RaidParty extends View {
     cx.timer.every(BLINK_MS, flick("blink", 170, () => !this.roar));
     cx.timer.every(ROAR_MS, flick("roar", 1100, () => this.monster.kind === "ogre"));
     cx.timer.every(ATTACK_MS, (cx) => {
-      let hits = agents().filter((a) => a.status === "working").length;
-      if (hits > 0 && this.joins(Math.max(320, this.size.width))) hits += 1; // you fight alongside them
-      const alive = this.monster?.hp > 0;
-      if (!this.fight(hits)) return;
-      if (alive && hits > 0) this.strike(cx);
+      if (!this.battle) return;
+      if (this.fight(0)) return cx.notify(); // a new monster walked in
+      if (!(this.monster?.hp > 0)) return;
+      const keys = agents()
+        .filter((a) => a.status === "working")
+        .map((a) => a.address);
+      if (keys.length && this.joins(Math.max(320, this.size.width))) keys.push(YOU); // you fight alongside them
+      if (!keys.length) return;
+      this.strike(cx, keys);
       cx.notify();
     });
     if (!CLASSES.includes(this.sprites[YOU])) {
@@ -191,8 +195,9 @@ export default class RaidParty extends View {
     this.unsaved = 0;
   }
 
-  // One beat of the battle with `hits` agents working. Returns whether anything
-  // changed. HP is saved every tenth point and on a kill, not on every hit.
+  // Brings in a monster if one is due, otherwise takes `hits` off the one
+  // there. Returns whether anything changed. HP is saved every tenth point and
+  // on a kill, not on every hit.
   fight(hits) {
     if (!this.battle) return false;
     const m = this.monster;
@@ -221,14 +226,16 @@ export default class RaidParty extends View {
     return this.sprites[YOU] !== "warrior" || Math.abs(this.you.x - (W / 2 + kind.core.x)) - kind.core.half <= MELEE;
   }
 
-  // Plays one beat of attacks: counts `tick` up, re-rendering on each.
-  strike(cx) {
+  // Plays one beat of attacks by `keys`: counts `tick` up, re-rendering on
+  // each. Each attacker's point of damage comes off on the tick its blow lands.
+  strike(cx, keys) {
     const beat = (this.beat += 1);
     this.tick = 0;
     for (let i = 1; i <= LAST_TICK + 1; i++) {
       cx.timer.after(i * TICK_STEP, (cx) => {
         if (beat !== this.beat) return;
         this.tick = i > LAST_TICK ? null : i;
+        this.fight(keys.filter((key) => this.phaseOf(key) === 4).length);
         cx.notify();
       });
     }
@@ -404,7 +411,7 @@ export default class RaidParty extends View {
             .w(BAR_W)
             .h(8)
             .bg("#1b2233")
-            .child(div().id("raid-party-monster-hp").h(8).w(Math.round((BAR_W * m.hp) / MONSTER_HP)).bg(tone).transition("width", { duration: 400, easing: "ease-out" })),
+            .child(div().id("raid-party-monster-hp").h(8).w(Math.round((BAR_W * m.hp) / MONSTER_HP)).bg(tone).transition("width", { duration: 150, easing: "ease-out" })),
         ),
     ];
   }
