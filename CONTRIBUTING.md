@@ -6,7 +6,7 @@
 2. Clone your fork
 3. Install the pinned tool versions from `.tool-versions`: `asdf install` (or `mise install`)
 4. Create a branch: `git checkout -b feat/your-feature-name`
-5. Make your changes and try them in Herdr: `./install.sh idle-rpg`
+5. Make your changes and try them in Herdr: `./install.sh`
 6. Commit using [conventional commits](#commit-style)
 7. Push and open a Pull Request
 
@@ -60,5 +60,5 @@ Releases are cut automatically when a PR merges to `main`, based on its `major`/
 - Write clear, commented code
 - Run `herdr-app check <mod folder>` after every mod change, and `herdr-app status` with the layout shown
 - Art is original: do not copy characters or artwork from existing games or products
-- Regenerate art with `python3 tools/idle-rpg-sprites.py idle-rpg/mods/idle-rpg/art` rather than editing PNGs by hand
-- Keep the visualizer's `RECIPE.md`, `preview.png` and the README in step with user-facing changes
+- Regenerate art with `python3 tools/idle-rpg-sprites.py mods/idle-rpg/art` rather than editing PNGs by hand
+- Keep `RECIPE.md`, `preview.png` and the README in step with user-facing changes

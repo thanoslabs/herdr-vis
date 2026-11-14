@@ -4,13 +4,13 @@
 [![Renovate](https://img.shields.io/badge/renovate-enabled-brightgreen?logo=renovatebot)](https://github.com/thanoslabs/herdr-idle/pulls?q=is%3Apr+author%3Aapp%2Frenovate)
 [![License: MIT](https://img.shields.io/github/license/thanoslabs/herdr-idle)](LICENSE)
 
-Agent workspace visualizers for the [Herdr](https://herdr.dev) desktop app: layouts that show your coding agents as something more fun than a list.
+A layout for the [Herdr](https://herdr.dev) desktop app that shows your coding agents as something more fun than a list.
 
 ## Idle RPG
 
 Turn your agents into a raid party. Collect loot and upgrades as you progress.
 
-![Idle RPG battle mode: the party attacking a dragon through a day and a night](idle-rpg/battle.gif)
+![Idle RPG battle mode: the party attacking a dragon through a day and a night](battle.gif)
 
 *The day and night are sped up here: a full cycle takes 20 minutes, not 18 seconds.*
 
@@ -35,30 +35,30 @@ A pixel-art castle rampart across the top of the window, under a sky with drifti
 - **Top-right corner:** your agents by status, each a pixel icon with its count on a badge (a red "!" for needing you, crossed swords for working, a green tick for done, a "Zz" for resting; a status nobody is in is left out), then a gear that opens the settings.
 - **Settings and damage numbers:** the gear's menu has switches, saved with the rest of your progress. For now one: **Show damage numbers** (on by default), which puts up each blow's damage in a pixel font as it lands, rising and fading off the monster; critical blows are gold and a size bigger.
 
-Full description of the design and how it is built: [`idle-rpg/RECIPE.md`](idle-rpg/RECIPE.md).
+Full description of the design and how it is built: [`RECIPE.md`](RECIPE.md).
 
 ## Install
 
-Each visualizer is a folder laid out like Herdr's config folder (`~/.config/herdr-app`): `layouts/`, `mods/`, `themes/`.
+The repo is laid out like Herdr's config folder (`~/.config/herdr-app`): `layouts/`, `mods/`, `themes/`.
 
 Clone the repo and copy the layout into Herdr:
 
 ```sh
 git clone https://github.com/thanoslabs/herdr-idle.git
 cd herdr-idle
-./install.sh idle-rpg
+./install.sh
 herdr-app do layout.switch --name idle-rpg
 ```
 
 `install.sh` copies the layout, theme and mod into `~/.config/herdr-app` (or `$HERDR_APP_HOME`), which is how Herdr expects layouts to be added. Run it again after a `git pull` to update. To remove the layout, delete `layouts/idle-rpg.json`, `layouts/idle-rpg.svg`, `themes/idle-rpg.json` and `mods/idle-rpg/` from that folder; your other layouts are untouched.
 
-Alternatively, ask your agent inside Herdr to read `~/.config/herdr-app/AGENTS.md` and add the layout from this repo's `idle-rpg` folder.
+Alternatively, ask your agent inside Herdr to read `~/.config/herdr-app/AGENTS.md` and add the layout from this repo.
 
 ## Developing
 
-- Edit the files in this repo, then run `./install.sh idle-rpg` to copy them into Herdr. Herdr reloads layouts and mods as they change; if a mod edit does not show, switch layouts away and back.
-- Run `herdr-app check idle-rpg/mods/idle-rpg` after every mod change, and `herdr-app status` to see errors.
-- All the pixel art is generated: edit the grids in `tools/idle-rpg-sprites.py` and run `python3 tools/idle-rpg-sprites.py idle-rpg/mods/idle-rpg/art`. It writes `art/` in folders by what a picture shows, then by what it is doing (`scene/`, `classes/<class>/<look>/walk/l.png`, `weapons/<class>/<weapon>/`, `hats/`, `monsters/<kind>/roar/`, `attacks/<what>/<variant>/`, `stations/`, `campfire/`, `light/`, `status/`, `icons/`, `font/`); `idle-rpg/RECIPE.md` lists them. Re-running `./install.sh` replaces the installed `art/` whole, so no picture from an older install lingers.
+- Edit the files in this repo, then run `./install.sh` to copy them into Herdr. Herdr reloads layouts and mods as they change; if a mod edit does not show, switch layouts away and back.
+- Run `herdr-app check mods/idle-rpg` after every mod change, and `herdr-app status` to see errors.
+- All the pixel art is generated: edit the grids in `tools/idle-rpg-sprites.py` and run `python3 tools/idle-rpg-sprites.py mods/idle-rpg/art`. It writes `art/` in folders by what a picture shows, then by what it is doing (`scene/`, `classes/<class>/<look>/walk/l.png`, `weapons/<class>/<weapon>/`, `hats/`, `monsters/<kind>/roar/`, `attacks/<what>/<variant>/`, `stations/`, `campfire/`, `light/`, `status/`, `icons/`, `font/`); `RECIPE.md` lists them. Re-running `./install.sh` replaces the installed `art/` whole, so no picture from an older install lingers.
 - Herdr writes `gpui-kit.d.ts` and `jsconfig.json` into each mod folder; they are git-ignored.
 - See [CONTRIBUTING.md](CONTRIBUTING.md) for branch, commit and release conventions.
 
@@ -66,14 +66,13 @@ Alternatively, ask your agent inside Herdr to read `~/.config/herdr-app/AGENTS.m
 
 ```
 .
-├── install.sh       # copies a visualizer into ~/.config/herdr-app
+├── install.sh       # copies the layout into ~/.config/herdr-app
 ├── tools/           # idle-rpg-sprites.py: draws every PNG in art/
-├── idle-rpg/
-│   ├── layouts/     # idle-rpg.json (the window), idle-rpg.svg (settings preview)
-│   ├── mods/        # idle-rpg/ (main.js, rules.js, mod.json, art/<entity>/…)
-│   ├── themes/      # idle-rpg.json
-│   ├── RECIPE.md    # the brief the layout is built from
-│   └── preview.png
+├── layouts/         # idle-rpg.json (the window), idle-rpg.svg (settings preview)
+├── mods/            # idle-rpg/ (main.js, rules.js, mod.json, art/<entity>/…)
+├── themes/          # idle-rpg.json
+├── RECIPE.md        # the brief the layout is built from
+├── preview.png
 └── .github/         # CI, release and Renovate workflows
 ```
 
