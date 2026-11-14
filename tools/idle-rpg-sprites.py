@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 # Draws Idle RPG's pixel art as PNGs (no dependencies): the class sprites
 # (stubby 16x16 adventurers with a one-pixel dark outline, in every colourway
-# the shop sells) and the castle scenery (wall, floor, mountains, clouds, sun,
-# moon, stars, props).
+# the shop sells, and every hat it sells drawn to lay over them), the castle
+# scenery (wall, floor, mountains, clouds, sun, moon, stars, props), the icons,
+# and a small pixel font for numbers.
 #
 #   python3 tools/idle-rpg-sprites.py idle-rpg/mods/idle-rpg/art
 #
@@ -742,7 +743,7 @@ def ogre(name, roar=False, lids=False, keep=None):        # 48x48
         p.rect(16, 19, 15, 3, "#3a1f1f"); p.rect(17, 17, 2, 4, BONE); p.rect(28, 17, 2, 4, BONE)
     p.save(name, keep=keep)
 
-def dragon(name, part=None, lids=False, keep=None):       # 80x64, facing left; part: "tail" or "body" alone
+def dragon(name, part=None, lids=False, keep=None, pose=None):  # 80x64, facing left; part: "tail" or "body" alone
     p = Pix(80, 64)
     R, Rd, Rl = "#c23b3b", "#8f2626", "#e06a5a"
     Wg, Wm, Cr = "#7a1f2b", "#b5483f", "#f2c98a"
@@ -753,24 +754,42 @@ def dragon(name, part=None, lids=False, keep=None):       # 80x64, facing left; 
         p.poly([(54, 46), (72, 36), (79, 22), (80, 26), (76, 40), (60, 56)], Rd)   # tail
         p.poly([(77, 22), (80, 14), (80, 24)], BONE)
     if part == "tail": return p.save(name)
-    p.poly([(44, 34), (52, 6), (62, 14), (70, 4), (76, 26), (62, 38)], Wg)          # far wing
+    # A roar (pose): "rear" draws the head back and up and lifts the wings a
+    # little, "roar" thrusts the head forward with the jaw wide and the wings
+    # high. Only the head, the top of the neck and the wing tips move; the
+    # neck's foot and everything below the breathing cut (y 38) stay put.
+    hx, hy, lift = {None: (0, 0, 0), "rear": (2, -2, 1), "roar": (-1, 1, 2)}[pose]
+    h = lambda pts: [(x + hx, y + hy) for x, y in pts]
+    up = lambda pts, tips: [(x, y - lift) if i in tips else (x, y) for i, (x, y) in enumerate(pts)]
+    p.poly(up([(44, 34), (52, 6), (62, 14), (70, 4), (76, 26), (62, 38)], (1, 2, 3)), Wg)  # far wing
     p.ell(44, 45, 20, 13, Rd); p.ell(43, 44, 19, 12, R); p.ell(40, 51, 14, 5, Cr)   # body, belly
     p.rect(30, 52, 8, 9, Rd); p.rect(50, 52, 8, 9, Rd)                              # legs
     p.rect(27, 60, 12, 3, Rd); p.rect(47, 60, 12, 3, Rd)
     for x in (27, 31, 35, 47, 51, 55): p.px(x, 62, BONE)
-    p.poly([(22, 20), (34, 18), (42, 38), (28, 44)], R)                             # neck
-    p.poly([(22, 22), (26, 21), (32, 42), (28, 44)], Cr)
-    for i in range(5): p.rect(22 + i, 24 + i * 4, 4, 1, "#d9a868")
-    for x, y in ((34, 14), (38, 22), (42, 28), (48, 28), (54, 30), (60, 34)):       # back spikes
+    p.poly(h([(22, 20), (34, 18)]) + [(42, 38), (28, 44)], R)                       # neck
+    p.poly(h([(22, 22), (26, 21)]) + [(32, 42), (28, 44)], Cr)
+    for i in range(5): p.rect(22 + i + round(hx * (4 - i) / 4), 24 + i * 4 + round(hy * (4 - i) / 4), 4, 1, "#d9a868")
+    for x, y in ((34 + hx, 14 + hy), (38, 22), (42, 28), (48, 28), (54, 30), (60, 34)):  # back spikes
         p.poly([(x, y + 5), (x + 2, y), (x + 5, y + 5)], BONE)
-    p.poly([(40, 36), (46, 8), (58, 16), (66, 2), (72, 22), (58, 36)], Wm)          # near wing
-    p.poly([(46, 8), (48, 10), (44, 34), (40, 36)], Rd); p.poly([(66, 2), (68, 4), (60, 34), (58, 36)], Rd)
-    p.ell(19, 17, 11, 7, Rd); p.ell(18, 16, 10, 6, R)                               # head
-    p.rect(3, 14, 14, 8, R); p.rect(3, 14, 14, 1, Rl); p.rect(2, 16, 2, 5, R)       # snout
-    p.rect(5, 22, 16, 3, Rd)                                                        # jaw
-    for x in (6, 9, 12, 15): p.px(x, 22, WHITE)
-    p.px(4, 16, K); p.rect(17, 12, 4, 4, "#ffe27a"); p.rect(18, 12, 1, 4, K)
-    p.poly([(23, 12), (31, 3), (27, 14)], BONE); p.poly([(19, 10), (24, 2), (22, 11)], BONE)  # horns
+    p.poly(up([(40, 36), (46, 8), (58, 16), (66, 2), (72, 22), (58, 36)], (1, 2, 3)), Wm)  # near wing
+    p.poly(up([(46, 8), (48, 10), (44, 34), (40, 36)], (0, 1)), Rd); p.poly(up([(66, 2), (68, 4), (60, 34), (58, 36)], (0, 1)), Rd)
+    p.ell(19 + hx, 17 + hy, 11, 7, Rd); p.ell(18 + hx, 16 + hy, 10, 6, R)           # head
+    if pose == "roar":                                                              # jaws wide
+        p.poly(h([(4, 17), (21, 17), (22, 24), (5, 30)]), "#3a1f1f")                # mouth
+        p.poly(h([(7, 28), (19, 22), (21, 24), (9, 29)]), "#c94040")               # tongue
+        p.poly(h([(2, 30), (19, 23), (22, 23), (22, 27), (6, 33)]), Rd)             # lower jaw, dropped
+        for x, y in ((5, 29), (9, 28), (13, 26), (17, 25)): p.px(x + hx, y + hy, WHITE)
+        p.rect(3 + hx, 10 + hy, 14, 7, R); p.rect(3 + hx, 10 + hy, 14, 1, Rl); p.rect(2 + hx, 12 + hy, 2, 4, R)  # snout, raised
+        for x in (6, 9, 12, 15): p.px(x + hx, 17 + hy, WHITE)
+        p.rect(4 + hx, 17 + hy, 1, 2, WHITE); p.rect(13 + hx, 17 + hy, 1, 2, WHITE)  # fangs
+        p.px(4 + hx, 12 + hy, K); p.rect(17 + hx, 13 + hy, 4, 3, "#ffe27a"); p.rect(18 + hx, 13 + hy, 1, 3, K)
+        p.rect(16 + hx, 12 + hy, 6, 1, Rd)                                          # brow, lowered
+    else:
+        p.rect(3 + hx, 14 + hy, 14, 8, R); p.rect(3 + hx, 14 + hy, 14, 1, Rl); p.rect(2 + hx, 16 + hy, 2, 5, R)  # snout
+        p.rect(5 + hx, 22 + hy, 16, 3, Rd)                                          # jaw
+        for x in (6, 9, 12, 15): p.px(x + hx, 22 + hy, WHITE)
+        p.px(4 + hx, 16 + hy, K); p.rect(17 + hx, 12 + hy, 4, 4, "#ffe27a"); p.rect(18 + hx, 12 + hy, 1, 4, K)
+    p.poly(h([(23, 12), (31, 3), (27, 14)]), BONE); p.poly(h([(19, 10), (24, 2), (22, 11)]), BONE)  # horns
     p.save(name, keep=keep)
 
 # Each monster's whole picture, the pieces that move on their own, and eyelids
@@ -785,6 +804,23 @@ dragon("monster-dragon.png"); dragon("monster-dragon-blink.png", lids=True)
 dragon("monster-dragon-tail.png", part="tail")                      # sways behind the body
 dragon("monster-dragon-body.png", part="body")
 dragon("monster-dragon-top.png", part="body", keep=lambda x, y: y < 38)  # head, neck, wings: breathing
+dragon("monster-dragon-rear.png", part="body", pose="rear")         # a roar: the wind-up, then
+dragon("monster-dragon-roar.png", part="body", pose="roar")         # the roar itself,
+dragon("monster-dragon-roar-top.png", part="body", pose="roar", keep=lambda x, y: y < 38)  # its upper body shaking
+icon("roar-wave.png", [                                 # rings out of the roaring dragon's mouth, to the left
+    "...ww",
+    "..w..",
+    ".w...",
+    ".w...",
+    "w....",
+    "w....",
+    "w....",
+    "w....",
+    ".w...",
+    ".w...",
+    "..w..",
+    "...ww",
+], {"w": "#f2c98a"})
 
 # ---- Attacks (battle mode). "-r" flies or faces right, "-l" is its mirror. ----
 def both(name, rows, pal):
@@ -848,9 +884,12 @@ icon("splash.png", [
 # Drawn attacking to the right: "f" is the stance, "a1" the wind-up, "a2" the
 # strike. "-l" is the mirror image, for attacking to the left. Each pose is
 # drawn in every colourway, with the same swaps as the everyday sprite.
+POSED = {}  # (class, tag): the pose's rows, kept for the hats (below)
+
 def pose(cls, tag, rows):
     rows = [r.ljust(22, ".") for r in rows]
     assert len(rows) == 16 and all(len(r) == 22 for r in rows), (cls, tag, [len(r) for r in rows])
+    POSED[(cls, tag)] = rows
     for name, swaps in looks(cls):
         pal = {**COMMON, **SPR[cls][0], **swaps, "#": OUTLINE}
         icon(f"{name}-{tag}-r.png", rows, pal)
@@ -916,3 +955,227 @@ SPR["healer"][0]["P"] = "#3fbf8f"
 pose("healer", "f", H)
 pose("healer", "a1", dots(H, [(12, 10, "."), (12, 9, "r"), (13, 8, "s"), (13, 5, "h"), (13, 6, "P"), (14, 6, "P"), (13, 7, "P"), (14, 7, "P")]))  # potion held up
 pose("healer", "a2", dots(H, [(13, 10, "r"), (14, 10, "s")]))                                                                         # arm flung out
+
+# ---- The pixel font: digits and a few signs, 3x5, for damage numbers and the
+# badges on the status icons. Each glyph is outlined all round (corners too, so
+# it reads over a monster or the sky) and comes in every colour main.js uses.
+# Its characters and colours must match GLYPHS and GLYPH_COLOURS in
+# mods/idle-rpg/rules.js, which names the files (glyphArt).
+FONT = {
+    "0": ["###", "#.#", "#.#", "#.#", "###"],
+    "1": [".#.", "##.", ".#.", ".#.", "###"],
+    "2": ["###", "..#", "###", "#..", "###"],
+    "3": ["###", "..#", ".##", "..#", "###"],
+    "4": ["#.#", "#.#", "###", "..#", "..#"],
+    "5": ["###", "#..", "###", "..#", "###"],
+    "6": ["###", "#..", "###", "#.#", "###"],
+    "7": ["###", "..#", "..#", ".#.", ".#."],
+    "8": ["###", "#.#", "###", "#.#", "###"],
+    "9": ["###", "#.#", "###", "..#", "###"],
+    "plus": ["...", ".#.", "###", ".#.", "..."],
+    "bang": [".#.", ".#.", ".#.", "...", ".#."],
+}
+GLYPH_COLOURS = {"white": "#ffffff", "gold": "#ffd166"}  # a plain hit and a badge; a critical blow
+
+def glyph(name, rows, colour):
+    h, w = len(rows) + 2, len(rows[0]) + 2
+    g = [[None] * w for _ in range(h)]
+    for y, row in enumerate(rows):
+        for x, ch in enumerate(row):
+            if ch == "#": g[y + 1][x + 1] = colour
+    o = [r[:] for r in g]
+    for y in range(h):
+        for x in range(w):
+            if g[y][x] is None and any(0 <= y+j < h and 0 <= x+i < w and g[y+j][x+i] for i in (-1, 0, 1) for j in (-1, 0, 1)):
+                o[y][x] = OUTLINE
+    save(name, o)
+
+for colour, hexa in GLYPH_COLOURS.items():
+    for ch, rows in FONT.items():
+        glyph(f"glyph-{colour}-{ch}.png", rows, hexa)
+
+# ---- The settings menu: a gear, the right-most icon of the top-right corner ----
+icon("i-gear.png", [
+    "..s..s..",
+    ".ssssss.",
+    "ssggggss",
+    ".sg..gs.",
+    ".sg..gs.",
+    "ssggggss",
+    ".ssssss.",
+    "..s..s..",
+], {"s": "#c3ccd8", "g": "#8f9bab"})
+# ---- Hats: one overlay per hat, class and picture, the same size as that
+# picture and see-through but for the hat, so the mod lays it over the picture
+# with no sums. Hats are not tied to a class (any class can wear any hat), but
+# every head sits in its own place and three wear their own headgear, so each
+# hat is drawn per class in the everyday sprite's 16x16 grid, where it covers
+# the class's headgear (the wizard's hat entirely) or sits on it. Each grid is
+# then pushed through the same canvas, lean, shear and mirror as the class's
+# pictures, so the hat follows the head; the healer's poses are its mirror
+# image, so its hats are mirrored in them too. A hat's outline goes only where
+# the picture under it is see-through, never across a face; "#" in a grid is
+# outline drawn on purpose, over the picture. An overlay only covers, so one
+# serves every colourway: hat-<id>-<class><frame>.png. The ids, in this order,
+# must match HAT_NAMES in mods/idle-rpg/rules.js.
+HAT_PAL = {
+    "P": "#e8508f", "p": "#b8336c", "y": "#ffd75e", "o": "#f4f7fb",                   # party: cone, shade, stripes, pompom
+    "R": "#d63a3a", "r": "#a52a2a", "W": "#f4f7fb", "w": "#c9d6e6",                   # santa: red, shade, fur, fur shade
+    "O": "#ec8a2c", "Q": "#c4661c", "K": "#3a1f12", "Y": "#ffd75e", "G": "#3f8f55",   # pumpkin: skin, ribs, carving, glow, stem
+}
+HATS = {
+"party": {
+    "wizard": [
+        ".......oo.......",
+        ".......PP.......",
+        "......yPPp......",
+        "......PyPp......",
+        ".....PPyPPp.....",
+        "....yPPPyPPp....",
+    ],
+    "healer": [
+        ".......oo.......",
+        "......yPPp......",
+        ".....PPyPPp.....",
+        "....yPPPyPPp....",
+    ],
+    "warrior": [
+        ".......oo.......",
+        ".......PP.......",
+        "......yPPp......",
+        ".....PPyPPp.....",
+        "....yPPPyPPp....",
+    ],
+    "archer": [
+        ".......oo.......",
+        "......yPPp......",
+        ".....PPyPPp.....",
+        ".....yPPPyPp....",
+    ],
+},
+"santa": {
+    "wizard": [
+        ".....RRRR.......",
+        "...RRRRRRr......",
+        "..RR.RRRRr......",
+        ".WW..RRRRr......",
+        ".Ww.RRRRRRr.....",
+        "....WWWWWWWW....",
+    ],
+    "healer": [
+        "......RRRR......",
+        "...RRRRRRRr.....",
+        ".WW.RRRRRRr.....",
+        ".Ww.WWWWWWWW....",
+    ],
+    "warrior": [
+        "......RRR.......",
+        "...RRRRRRr......",
+        ".WW.RRRRRRr.....",
+        ".Ww.WWWWWWWW....",
+    ],
+    "archer": [
+        "......RRR.......",
+        "...RRRRRRRr.....",
+        ".WW.RRRRRRRr....",
+        ".Ww.WWWWWWWW....",
+    ],
+},
+"pumpkin": {
+    "wizard": [
+        "................",
+        ".......GG.......",
+        ".....OOOOOO.....",
+        "....OOQOOQOO....",
+        "....OKKOOKKO....",
+        "....OOKOOKOO....",
+        "....OQOOOOQO....",
+        "....OKYKKYKO....",
+        "....OQKKKKQO....",
+        ".....OOOOOO.....",
+    ],
+    "healer": [
+        "................",
+        ".......GG.......",
+        ".....OOOOOO.....",
+        "....OOQOOQOO....",
+        "....OKKOOKKO....",
+        "....OOKOOKOO....",
+        "....OKYKKYKO....",
+        "....OQKKKKQO....",
+        ".....OOOOOO.....",
+    ],
+    "warrior": [
+        "................",
+        ".......GG.......",
+        ".....OOOOOO.....",
+        "....OOQOOQOO....",
+        "....OOQOOQOO....",
+        "....OKKOOKKO....",
+        "....OOKOOKOO....",
+        "....OKYKKYKO....",
+        "....OQKKKKQO....",
+        ".....OOOOOO.....",
+    ],
+    "archer": [
+        "................",
+        "......GG........",
+        ".....OOOOOO.....",
+        "....OOQOOQOO....",
+        "...OOOQOOQOOO...",
+        "...OOKKOOKKOO...",
+        "...OOOKOOKOOO...",
+        "...OQKYKKYKQO...",
+        "....OQKKKKQO....",
+    ],
+},
+}
+assert all(i.isalpha() and i.islower() and i != "default" for i in HATS)
+assert all(set(HATS[i]) == set(SPR) for i in HATS)
+
+def box(rows):
+    # a fighting pose's 22x16 rows on its 24x18 picture, as icon() lays them out
+    g = [[None] * 24 for _ in range(18)]
+    for y, row in enumerate(rows):
+        for x, ch in enumerate(row):
+            if ch != ".": g[y + 1][x + 1] = ch
+    return g
+
+def pictures(rows, posed):
+    # every picture of a class as (frame, grid), as the code above draws it:
+    # `rows` in the everyday 16x16 grid, `posed(tag)` a pose's 22-wide rows.
+    # The frames are FRAMES in mods/idle-rpg/rules.js.
+    out = [("", canvas(rows, 18, 1))]
+    for tag, side in (("l", -1), ("r", 1)):
+        out.append((f"-walk-{tag}", canvas(lift(rows, side), 18, 1, lambda y: side if y < 14 else 0)))
+    out.append(("-rag-c", canvas(rows, 22, 3)))
+    for tag, side in (("l", -1), ("r", 1)):
+        out.append((f"-rag-{tag}", canvas(rows, 22, 3, lambda y: side * round(y * 0.2))))
+    for tag in ("f", "a1", "a2"):
+        out.append((f"-{tag}-r", box(posed(tag))))
+        out.append((f"-{tag}-l", box([r[::-1] for r in posed(tag)])))
+    return out
+
+def overlay(hat, body):
+    # the hat's pixels, and its outline where the body's picture (outline and
+    # all) leaves the canvas see-through
+    h, w = len(body), len(body[0])
+    near = lambda g, y, x: any(0 <= y+j < h and 0 <= x+i < w and g[y+j][x+i] for i, j in ((1,0),(-1,0),(0,1),(0,-1)))
+    o = [[None] * w for _ in range(h)]
+    for y in range(h):
+        for x in range(w):
+            if hat[y][x]: o[y][x] = OUTLINE if hat[y][x] == "#" else HAT_PAL[hat[y][x]]
+            elif near(hat, y, x) and not body[y][x] and not near(body, y, x): o[y][x] = OUTLINE
+    return o
+
+for hat, by_class in HATS.items():
+    for cls, top in by_class.items():
+        rows = [r.ljust(16, ".") for r in top] + ["." * 16] * (16 - len(top))
+        assert len(rows) == 16 and all(len(r) == 16 for r in rows), (hat, cls)
+        # the wizard's hat must not show under any of them
+        assert all(rows[y][x] != "." for y in range(6) for x in range(16) if SPR["wizard"][1][y][x] in "hyg") or cls != "wizard", hat
+        mine = [r[::-1] for r in rows] if cls == "healer" else rows   # the healer's poses are mirrored
+        body = pictures(SPR[cls][1], lambda tag: POSED[(cls, tag)])
+        over = pictures(rows, lambda tag: [r.ljust(22, ".") for r in mine])
+        for (frame, b), (_, g) in zip(body, over):
+            save(f"hat-{hat}-{cls}{frame}.png", overlay(g, b))
