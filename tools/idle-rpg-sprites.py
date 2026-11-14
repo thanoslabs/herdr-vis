@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # Draws Idle RPG's pixel art as PNGs (no dependencies): the class sprites
-# (stubby 16x16 adventurers with a one-pixel dark outline) and the castle
-# scenery (wall, floor, mountains, clouds, sun, moon, stars, props).
+# (stubby 16x16 adventurers with a one-pixel dark outline, in every colourway
+# the shop sells) and the castle scenery (wall, floor, mountains, clouds, sun,
+# moon, stars, props).
 #
 #   python3 tools/idle-rpg-sprites.py idle-rpg/mods/idle-rpg/art
 #
@@ -89,6 +90,41 @@ SPR = {
 ]),
 }
 
+# Colourways sold in the shop: each class's default (the palette above, drawn
+# as <class>*.png) and three more, drawn as <class>-<id>*.png by swapping
+# palette entries over the default's (clothing, armour, hair, trim; never skin,
+# eyes or the outline). The ids, in this order, must match COLOUR_NAMES in
+# mods/idle-rpg/rules.js, which names them (and COLOUR_PRICES prices them).
+LOOKS = {
+"wizard": {   # hat, robe and boots; the beard, staff and gold trim stay
+    "crimson": {"h":"#a8323a","r":"#cf4747","R":"#a8323a","d":"#64202a","c":"#ffcf7a"},
+    "moss":    {"h":"#2f7a46","r":"#45a05f","R":"#2f7a46","d":"#1f4d33","y":"#dfe6ee","g":"#dfe6ee","c":"#c4ff8f"},
+    "frost":   {"h":"#4f86c6","r":"#9fd0f5","R":"#6fa8dc","d":"#35608f","y":"#ffffff","g":"#ffffff","c":"#ffffff","C":"#8fe3ff"},
+},
+"healer": {   # the cross, hood and trim; the robe stays pale so the cross shows
+    "rose":  {"t":"#d4457c","h":"#a8552e","m":"#ffa8c8","r":"#fbf0f2","d":"#7a3b4f"},
+    "sky":   {"t":"#3b78d0","h":"#3b2b22","m":"#a8d8ff","r":"#eef4fb","d":"#3a4e6e"},
+    "plum":  {"t":"#8048bf","h":"#f4f0e6","m":"#d8b4ff","r":"#f6f0fb","d":"#4a3366"},
+},
+"warrior": {  # armour (and the blade, which shares its light tone), plume and shield
+    "cobalt": {"a":"#4f74b8","A":"#b4cdf0","p":"#f4ecd8","u":"#c94040","b":"#34466e"},
+    "jade":   {"a":"#5c9c84","A":"#c4ecdc","p":"#f2c14e","u":"#7a3fa8","b":"#3d5f55"},
+    "ruby":   {"a":"#b04a4a","A":"#f4d2cc","p":"#f4ecd8","u":"#2f7a7a","b":"#5b3b3b"},
+},
+"archer": {   # tunic, hat, feather and quiver; the hair, bow and string stay
+    "scarlet": {"n":"#c43a3a","N":"#8a2226","p":"#f2c14e","q":"#5b3b22"},
+    "azure":   {"n":"#3f7fcc","N":"#285a96","p":"#f4ecd8"},
+    "dusk":    {"n":"#8a56c2","N":"#5e3890","p":"#6fdc9a","q":"#c08a4a"},
+},
+}
+# a look's id follows the class in every file name, so it must not read as a frame
+# an id is one lower-case word, and not one a picture's name already uses, so no two files can share a name
+assert all(i.isalpha() and i.islower() and i not in {"walk", "rag", "f", "a", "l", "r", "c", "default"} for c in LOOKS for i in LOOKS[c])
+
+def looks(cls):
+    # (file name prefix, palette entries to swap): the default first, unchanged
+    return [(cls, {})] + [(f"{cls}-{look}", swaps) for look, swaps in LOOKS[cls].items()]
+
 def canvas(rows, size, pad, dx=lambda y: 0):
     g = [[None] * size for _ in range(size)]
     for y, row in enumerate(rows):
@@ -126,16 +162,17 @@ def lift(rows, side):
     r[a] = r[a + 1] = "."
     return rows[:14] + ["".join(r)] + rows[15:]
 
-for name, (pal, rows) in SPR.items():
-    pal = {**COMMON, **pal, "#": OUTLINE}
-    assert len(rows) == 16 and all(len(r) == 16 for r in rows), (name, [len(r) for r in rows])
-    w = lambda n, g: open(os.path.join(out, n), "wb").write(png(outlined(g), pal))
-    w(f"{name}.png", canvas(rows, 18, 1))                       # 16x16 art, 1px margin for the outline
-    for tag, side in (("l", -1), ("r", 1)):                     # lean a pixel, other foot lifted
-        w(f"{name}-walk-{tag}.png", canvas(lift(rows, side), 18, 1, lambda y: side if y < 14 else 0))
-    w(f"{name}-rag-c.png", canvas(rows, 22, 3))                 # dangling: straight, or sheared each way
-    for tag, side in (("l", -1), ("r", 1)):
-        w(f"{name}-rag-{tag}.png", canvas(rows, 22, 3, lambda y: side * round(y * 0.2)))
+for cls, (base, rows) in SPR.items():
+    assert len(rows) == 16 and all(len(r) == 16 for r in rows), (cls, [len(r) for r in rows])
+    for name, swaps in looks(cls):                              # every colourway, the default first
+        pal = {**COMMON, **base, **swaps, "#": OUTLINE}
+        w = lambda n, g: open(os.path.join(out, n), "wb").write(png(outlined(g), pal))
+        w(f"{name}.png", canvas(rows, 18, 1))                   # 16x16 art, 1px margin for the outline
+        for tag, side in (("l", -1), ("r", 1)):                 # lean a pixel, other foot lifted
+            w(f"{name}-walk-{tag}.png", canvas(lift(rows, side), 18, 1, lambda y: side if y < 14 else 0))
+        w(f"{name}-rag-c.png", canvas(rows, 22, 3))             # dangling: straight, or sheared each way
+        for tag, side in (("l", -1), ("r", 1)):
+            w(f"{name}-rag-{tag}.png", canvas(rows, 22, 3, lambda y: side * round(y * 0.2)))
 
 
 # ---- Scenery ---------------------------------------------------------------
@@ -280,7 +317,7 @@ save("banner.png", chars([
     ".rr....rr.",
     ".r......r.",
 ], {"b": "#7a5230", "r": "#c94040", "R": "#a53030", "g": "#f2c14e", "w": "#fff3b0"}))
-save("table.png", chars([
+TABLE = chars([
     "....................gg......",
     "..ccccc.............gg...y..",
     ".cc...cc...........pppp..o..",
@@ -296,7 +333,81 @@ save("table.png", chars([
     ".dtt....................ttd.",
     ".ddd....................ddd.",
 ], {"c": "#f4ecd8", "g": "#9fd8e8", "p": "#c94040", "P": "#e86a6a", "y": "#ffe27a", "o": "#ff9d3c", "w": "#f4f7fb",
-    "T": "#b98047", "t": "#9a6639", "d": "#6e4525"}))
+    "T": "#b98047", "t": "#9a6639", "d": "#6e4525"})
+save("table.png", TABLE)
+# ---- Stations, on the rampart between raids: each opens one of the panels ----
+# Each also comes as "<name>-hot": the same picture inside a one-pixel white
+# outline (so one art pixel bigger on every side), shown under the pointer.
+def lit(g):
+    h, w = len(g), len(g[0])
+    big = [[None] * (w + 2) for _ in range(h + 2)]
+    for y in range(h):
+        for x in range(w): big[y + 1][x + 1] = g[y][x]
+    o = [r[:] for r in big]
+    for y in range(h + 2):
+        for x in range(w + 2):
+            if big[y][x] is None and any(0 <= y+j < h+2 and 0 <= x+i < w+2 and big[y+j][x+i] for i, j in ((1,0),(-1,0),(0,1),(0,-1))):
+                o[y][x] = "#ffffff"
+    return o
+
+def station(name, rows, pal):
+    g = chars(rows, pal)
+    save(name + ".png", g)
+    save(name + "-hot.png", lit(g))
+
+save("table-hot.png", lit(TABLE))                 # the codex is the whole table, and the book on it
+station("book", [                                # the codex, lying on the table
+    ".bbbbbb.",
+    "bBBBBBBb",
+    "bBBggBBb",
+    "bBBggBBb",
+    "bBBBBBBb",
+    "wwwwwwwb",
+], {"b": "#3b2a6b", "B": "#6b4fbf", "g": "#f2c14e", "w": "#f4ecd8"})
+station("stall", [                               # the shop: a merchant's stall
+    "..rrwwrrwwrrwwrrwwrrwwrr..",
+    ".rrwwrrwwrrwwrrwwrrwwrrww.",
+    "rrwwrrwwrrwwrrwwrrwwrrwwrr",
+    "RRWWRRWWRRWWRRWWRRWWRRWWRR",
+    "R..WW..RR..WW..RR..WW..RR.",
+    ".d......................d.",
+    ".d......................d.",
+    ".d......................d.",
+    ".d...........pp.........d.",
+    ".d..gg......pppp...yy...d.",
+    ".d.gGGg.....pPPp..yYYy..d.",
+    "TTTTTTTTTTTTTTTTTTTTTTTTTT",
+    "tttttttttttttttttttttttttt",
+    "dddddddddddddddddddddddddd",
+    ".dtTttTttTttTttTttTttTttd.",
+    ".dtTttTttTttTttTttTttTttd.",
+    ".dtTttTttTttTttTttTttTttd.",
+    ".dtTttTttTttTttTttTttTttd.",
+    ".dtTttTttTttTttTttTttTttd.",
+    ".dtTttTttTttTttTttTttTttd.",
+    ".dddddddddddddddddddddddd.",
+], {"r": "#c94040", "R": "#a53030", "w": "#f4ecd8", "W": "#d8cfb8", "g": "#c8891e", "G": "#f2c14e", "p": "#3f8fd0", "P": "#9fd8e8",
+    "y": "#3fbf6f", "Y": "#9be6b4", "T": "#b98047", "t": "#9a6639", "d": "#6e4525"})
+station("dummy", [                               # the skills: a straw training dummy
+    "....ssss....",
+    "...sSSSSs...",
+    "...sSSSSs...",
+    "....ssss....",
+    "bbbbbbbbbbbb",
+    "..yyYYYYyy..",
+    "..yYYrrYYy..",
+    "..yYrwwrYy..",
+    "..yYrwwrYy..",
+    "..yYYrrYYy..",
+    "..yyYYYYyy..",
+    "...yyyyyy...",
+    ".....bb.....",
+    ".....bb.....",
+    ".....bb.....",
+    ".....bb.....",
+    "...bbbbbb...",
+    "..bbbbbbbb..",
+], {"s": "#b89a62", "S": "#d9c08a", "b": "#7a5230", "y": "#c9a03c", "Y": "#e6c766", "r": "#c94040", "w": "#f4ecd8"})
 save("barrel.png", chars([
     "..tttttttt..",
     ".tTTTTTTTTt.",
@@ -427,6 +538,24 @@ icon("i-skull.png", [                                   # slain
     ".wwwww.",
     ".wkwkw.",
 ], {"w": "#ece6d6", "k": "#2a2433"})
+icon("arrow.png", ["wwwww", ".www.", "..w.."], {"w": "#ffffff"})  # bobs over the station under the pointer
+icon("i-armour.png", [                                  # the shop's armours
+    "aa...aa",
+    "aAaaaAa",
+    ".aAAAa.",
+    ".aAaAa.",
+    ".aAAAa.",
+    ".aaAaa.",
+    "..aaa..",
+], SWORD)
+icon("i-hat.png", [                                     # the shop's hats
+    "...b...",
+    "..bb...",
+    "..bBb..",
+    ".bbBb..",
+    ".ggggg.",
+    "bbbbbbb",
+], {"b": "#4a6fd0", "B": "#7fa0ee", "g": "#f2c14e"})
 icon("i-coin.png", [                                    # gold
     "..ggg..",
     ".gyyyg.",
@@ -632,13 +761,15 @@ icon("splash.png", [
 
 # ---- Fighting poses (battle mode), on a 22x16 grid so a weapon can reach out.
 # Drawn attacking to the right: "f" is the stance, "a1" the wind-up, "a2" the
-# strike. "-l" is the mirror image, for attacking to the left.
+# strike. "-l" is the mirror image, for attacking to the left. Each pose is
+# drawn in every colourway, with the same swaps as the everyday sprite.
 def pose(cls, tag, rows):
-    pal = {**COMMON, **SPR[cls][0], "#": OUTLINE}
     rows = [r.ljust(22, ".") for r in rows]
     assert len(rows) == 16 and all(len(r) == 22 for r in rows), (cls, tag, [len(r) for r in rows])
-    icon(f"{cls}-{tag}-r.png", rows, pal)
-    icon(f"{cls}-{tag}-l.png", [r[::-1] for r in rows], pal)
+    for name, swaps in looks(cls):
+        pal = {**COMMON, **SPR[cls][0], **swaps, "#": OUTLINE}
+        icon(f"{name}-{tag}-r.png", rows, pal)
+        icon(f"{name}-{tag}-l.png", [r[::-1] for r in rows], pal)
 
 def swap(rows, changes):
     rows = list(rows)

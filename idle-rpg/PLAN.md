@@ -1,6 +1,6 @@
 # Idle RPG: plan
 
-Planning notes for growing this layout from a visualizer with a battle mode into an idle RPG. Steps 1 to 3 of the proposed order (bookkeeping, experience, and class skills with per-attacker cadence) are built; the rest is not. "Decided" items come from the repo owner; "Default" items were chosen while building and are constants in `mods/idle-rpg/rules.js`, easy to retune; "Proposed" items are suggestions that still need a yes.
+Planning notes for growing this layout from a visualizer with a battle mode into an idle RPG. Steps 1 to 3 of the proposed order (bookkeeping, experience, and class skills with per-attacker cadence) are built, and the colours part of step 4 (a shop selling colourways); the rest is not. "Decided" items come from the repo owner; "Default" items were chosen while building and are constants in `mods/idle-rpg/rules.js`, easy to retune; "Proposed" items are suggestions that still need a yes.
 
 ## Principles
 
@@ -49,6 +49,16 @@ Planning notes for growing this layout from a visualizer with a battle mode into
 - **Decided:** scaling monsters with levels or kills is a later iteration, not built (see Scaling).
 - For now gold only buys customisation for characters: different sprites, colours, hats and so on.
 
+### Customisation shop
+
+- **Decided:** colours first, then hats and alternate sprites. **Colours built**, sold as "Armours": a shop opened from the gold on the sign, with the kinds of item down its left side (Armours, Weapons, Hats, and room for more). **Owner's decision:** the shop is laid out by category this way because much more is planned for it. Weapons, hats and alternate sprites are **not built**: their categories are there and empty.
+- Default: a look belongs to a class, not to an agent (agents are short-lived and forgotten after a week). Every character with that class on, agents and the player alike, wears the colourway the class has equipped.
+- Default: each class has its default colourway (free, always owned) and three more to buy, priced 5, 10 and 20 gold (`COLOUR_PRICES`). Buying is permanent; an owned colourway can be equipped and swapped freely at no cost. No refunds, no selling.
+- Default: buying a colourway also puts it on (one click; the default or any other owned one is a free click away).
+- Gold can never go negative; a purchase that cannot be afforded does nothing (the Buy button is dimmed).
+- **Owner's decision:** the codex, the shop and the skills are also reachable between raids, from stations on the rampart: a book on the table (codex), a merchant's stall (shop) and a training dummy (skills; the dummy was my pick, a **default**). **Built.** Starting or ending a raid closes whichever panel is open.
+- Colourways are palette swaps in `tools/idle-rpg-sprites.py` (`LOOKS`) of every picture a class has, named `<class>-<id>*.png`; the default keeps `<class>*.png`. The catalogue (`SHOP` in `rules.js`) has one entry per kind of item with a list per class, and the state keeps owned and equipped per class per kind, so hats can be added as another kind without a rewrite.
+
 ### Kill counts
 
 - Keep a count of each type of monster slain, not just the total. **Built**: saved, and shown in the codex that opens from the kill count on the sign. Not used for anything else yet.
@@ -75,10 +85,9 @@ Planning notes for growing this layout from a visualizer with a battle mode into
 ### Gold and customisation
 
 - (Rounding when monster HP is not a multiple of 100 now has a default: round down. See Decided.)
-- Who owns a purchase: the player's account, with items applied per class or per character?
-- An agent's look is forgotten with the agent. Should looks be set per class so they survive?
-- Where the shop lives. The scene is a strip of at most 560px above the terminals; the info card is small.
-- Prices.
+- (Who owns a purchase, whether looks are per class, where the shop lives and the prices of colourways now have defaults: per class, a panel under the sign, 5, 10 and 20 gold. See Customisation shop.)
+- Hats: drawn as a separate layer placed over the head in each pose, or a sprite per hat and pose? Prices, and whether a hat and a colourway combine freely.
+- Alternate sprites: whether they replace a class's look entirely, and how they combine with colourways.
 
 ### Scaling
 
@@ -86,14 +95,14 @@ Planning notes for growing this layout from a visualizer with a battle mode into
 
 ## Technical notes
 
-- **State today** (`idle-rpg.state` in Herdr's shared state, version 2): `version`, `you`, `spots`, `sprites`, `seen`, `battle`, `monster` (with `maxHp`), `slain`, `gold`, `kills` per monster kind, `xp` for `you` and each class (total XP only; levels are derived), and `skills`: ranks per class (points left are derived). Version 1 state loads with every rank at 0; ranks that claim more points than a class has earned reset that class. Each attacker's rhythm is in memory only. `loadState` in `rules.js` reads older state and malformed values without throwing. See `RECIPE.md`.
-- **Saving (decided):** combat progress (monster HP, XP) is saved only when a monster is slain and when the next one spawns, not as damage lands: setting a shared value re-renders every mod in the window, and Power and Haste would make damage-based saves frequent. HP and XP earned since the last kill are lost if the app closes mid-fight. Deliberate actions save at once: spending or resetting points, changing a class, the raid toggle, moving yourself or an agent, a newcomer getting a class.
-- **State still to add:** owned and equipped customisations.
+- **State today** (`idle-rpg.state` in Herdr's shared state, version 3): `version`, `you`, `spots`, `sprites`, `seen`, `battle`, `monster` (with `maxHp`), `slain`, `gold`, `kills` per monster kind, `xp` for `you` and each class (total XP only; levels are derived), `skills`: ranks per class (points left are derived), and `looks`: per class and kind of item, the ids owned and the one equipped (`{ colour: { owned, equipped } }`). Version 1 state loads with every rank at 0; ranks that claim more points than a class has earned reset that class. Version 1 and 2 state loads with every class owning and wearing only its default colourway; unknown or repeated ids are dropped and an equipped id that is not owned falls back to the default. Each attacker's rhythm is in memory only. `loadState` in `rules.js` reads older state and malformed values without throwing. See `RECIPE.md`.
+- **Saving (decided):** combat progress (monster HP, XP) is saved only when a monster is slain and when the next one spawns, not as damage lands: setting a shared value re-renders every mod in the window, and Power and Haste would make damage-based saves frequent. HP and XP earned since the last kill are lost if the app closes mid-fight. Deliberate actions save at once: spending or resetting points, buying or equipping in the shop, changing a class, the raid toggle, moving yourself or an agent, a newcomer getting a class.
+- **State still to add:** hats and alternate sprites, as more kinds under `looks`.
 - **Existing kill total** cannot be split by monster kind after the fact. It is kept as the total and the per-kind counts start from zero.
 - **Per-attacker cadence** replaced the single 3-second beat: each attacker keeps its own rhythm on one 250ms clock that runs only while someone is attacking and re-renders only while someone is mid-attack. **Built.**
 - **Stronger attacks:** `fight()` takes a list of blows, each with its own damage.
-- **Customisation art** is the costly part. Every character is drawn in a standing sprite, walk frames and three fighting poses in two directions. Colours can be generated by swapping palettes in `tools/idle-rpg-sprites.py`. Hats either multiply the sprite count or are drawn as a separate layer placed over the head in each pose.
-- **`main.js` is one class of about 1,600 lines.** A Herdr mod may import other files in its folder (`./rules.js`; Herdr's own `win98` mod does), so the game rules (experience, levels, skill points and what ranks give, attack gaps, the crit roll, monster HP, gold, kill counts, loading state) live in `rules.js` as plain functions, and `main.js` draws and runs the timers.
+- **Customisation art** is the costly part. Every character is drawn in a standing sprite, walk frames, dangling frames and three fighting poses in two directions: twelve pictures. Colours are generated by swapping palette entries in `tools/idle-rpg-sprites.py` (**built**: 3 colourways × 4 classes × 12 pictures, 144 more files, about 98 KB). Hats either multiply the sprite count or are drawn as a separate layer placed over the head in each pose.
+- **`main.js` is one class of about 1,800 lines.** A Herdr mod may import other files in its folder (`./rules.js`; Herdr's own `win98` mod does), so the game rules (experience, levels, skill points and what ranks give, attack gaps, the crit roll, monster HP, gold, kill counts, loading state) live in `rules.js` as plain functions, and `main.js` draws and runs the timers.
 - **Progress only accrues while the layout is shown**, since the timers live in the mod. Whether that is acceptable for an idle game is worth a decision.
 
 ## Proposed order
@@ -101,7 +110,7 @@ Planning notes for growing this layout from a visualizer with a battle mode into
 1. State and bookkeeping: versioned state, kills per monster kind, gold on a kill, shown on the sign. **Built.**
 2. Experience: player and class experience and levels, shown on the info cards. No unlocks yet. **Built** (levels also on the class picker, and a note over the head on a level-up).
 3. Class unlocks: stronger and faster attacks, then buffs. Needs per-attacker cadence. **Built** as per-class skill points (Power, Haste, Crit), with per-attacker cadence and monster HP by kind; buffs not built.
-4. Customisation shop: colours first (cheap to generate), then hats and alternate sprites.
+4. Customisation shop: colours first (cheap to generate), then hats and alternate sprites. **Colours built** (a shop under the sign, colourways per class); hats and alternate sprites not built.
 5. Monsters fighting back, once its design questions are answered.
 
 Parked beyond this: what player levels unlock, maps, resources other than gold.

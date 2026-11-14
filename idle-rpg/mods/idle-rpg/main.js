@@ -12,7 +12,7 @@
 // and drag an agent: it dangles from the
 // pointer; let go to drop it where it is (it falls to the floor). Spots and
 // classes are remembered.
-// Battle mode (the Start Raid / End Raid button by the sign): a random monster stands in the middle
+// Battle mode (the Start Raid / Return to town button by the sign): a random monster stands in the middle
 // (a slime has 100 HP, an ogre 300, a dragon 500) and the party forms up
 // around it, warriors up close and everyone else at range. Every working agent
 // attacks in its own way (sword swing, arrow, fireball, thrown potion) on its
@@ -23,6 +23,8 @@
 // that class a skill point, spent in the skills panel on Power (damage),
 // Haste (attack speed) or Crit (double damage now and then). Levels show on
 // the cards and the class choices, gold, kills and points to spend on the sign.
+// Gold buys colourways for a class in the shop (the coin on the sign); everyone
+// with that class on wears the one it has equipped.
 // Layout props: { inset } = left edge of the sign (84 leaves room for macOS buttons).
 
 import { View, div, image } from "gpui-kit";
@@ -33,20 +35,29 @@ import {
   CLASSES,
   CLASS_SKILLS,
   MAX_RANK,
+  SHOP,
+  SHOP_KINDS,
   STATE_VERSION,
   TICK_STEP,
   YOU,
   attackGap,
   attackTicksOf,
   blow,
+  buy,
+  canBuy,
   canRaise,
+  catalogue,
   classLevel,
   credit,
   critChanceOf,
   damageOf,
+  equip,
+  equipped,
   firstAttack,
   loadState,
+  lookArt,
   monsterHp,
+  owns,
   playerLevel,
   pointsEarned,
   pointsLeft,
@@ -60,7 +71,8 @@ import {
 const ART = "mods/idle-rpg/art";
 // shared: { version, you: {x, y}, spots: { <address>: {x, y} }, sprites: { you | <address>: <class> },
 //   seen, battle, monster, slain, gold, kills: { <kind>: n }, xp: { you | <class>: n },
-//   skills: { <class>: { power, haste, crit } } } (see loadState)
+//   skills: { <class>: { power, haste, crit } },
+//   looks: { <class>: { armour | weapon | hat: { owned: [<id>], equipped: <id> } } } } (see loadState)
 const STATE = "idle-rpg.state";
 const randomClass = () => CLASSES[Math.floor(Math.random() * CLASSES.length)];
 const STATUS = {
@@ -97,6 +109,9 @@ const CELL_W = 88;
 const YOU_Y = [12, FLOOR_H - 24];
 const CRITTER_Y = [16, FLOOR_H - 42];
 const CARD_W = 232;
+const SHOP_NAV_W = 78; // the kinds of item down the shop's left side
+const SHOP_ITEM_H = 78; // one thing for sale: picture, name, button
+const SHOP_ICONS = { armour: "i-armour", weapon: "sword-l", hat: "i-hat" };
 // Battle mode. Sizes are on-screen px (art px x 4, plus the outline). A new
 // kind also needs its HP in MONSTER_HP in rules.js, which lists the kinds.
 const MONSTERS = {
@@ -185,7 +200,7 @@ export default class RaidParty extends View {
     this.seen = saved.seen; // <address>: when it was last here
     this.battle = saved.battle;
     this.monster = saved.monster; // { kind, hp, maxHp, id, slainAt? }
-    this.progress = { slain: saved.slain, gold: saved.gold, kills: saved.kills, xp: saved.xp, skills: saved.skills };
+    this.progress = { slain: saved.slain, gold: saved.gold, kills: saved.kills, xp: saved.xp, skills: saved.skills, looks: saved.looks };
     this.cheerSeq = 0;
     // These three are keyed by address, so they have no prototype to collide with.
     this.cheers = Object.create(null); // YOU | <address>: { lines, id, at } while a level-up note shows
@@ -225,7 +240,10 @@ export default class RaidParty extends View {
     this.drag = null; // { address, x, y, vx, last } while a critter dangles
     this.card = null; // whose card is open: an agent's address, or YOU
     this.codex = false; // the list of kills by kind is open under the sign
+    this.hot = null; // the station under the pointer: "codex" | "skills" | "shop"
     this.skillsOpen = null; // the class the skills panel under the sign shows, while it is open
+    this.shopOpen = null; // the class the shop under the sign shows, while it is open
+    this.shopKind = SHOP_KINDS[0]; // the kind of item it shows: the one picked down its left side
     this.picking = false; // the open card is showing the class choices
     this.walking = false;
     this.walkTask = null;
@@ -336,6 +354,13 @@ export default class RaidParty extends View {
   // The skill ranks of the class someone has on (undefined counts as all 0).
   ranksOf(key) {
     return this.progress.skills[this.sprites[key]];
+  }
+
+  // The path of one of class `cls`'s pictures in the colourway it has
+  // equipped, or in `colour` (the shop's previews). `frame` is what follows
+  // the name, one of FRAMES in rules.js: "" standing, "-walk-l", "-f-r" and so on.
+  look(cls, frame = "", colour = equipped(this.progress, cls, "armour")) {
+    return `${ART}/${lookArt(cls, colour)}${frame}.png`;
   }
 
   // Starts the attack clock if it is stopped and anyone is ready to attack.
@@ -751,8 +776,8 @@ export default class RaidParty extends View {
     const phase = this.phaseOf(a.address);
     const frame = !fighting || !(this.monster?.hp > 0) ? "f" : phase === 1 ? "a1" : phase === 2 || phase === 3 ? "a2" : "f";
     const pose = this.fighting
-      ? div().relative().w(72).h(72).child(div().absolute().left(dir > 0 ? 0 : -24).top(0).child(image(`${ART}/${c}-${frame}-${dir > 0 ? "r" : "l"}.png`).w(96).h(72)))
-      : image(`${ART}/${c}.png`).w(72).h(72);
+      ? div().relative().w(72).h(72).child(div().absolute().left(dir > 0 ? 0 : -24).top(0).child(image(this.look(c, `-${frame}-${dir > 0 ? "r" : "l"}`)).w(96).h(72)))
+      : image(this.look(c)).w(72).h(72);
     const where = `${a.space_name} · ${a.tab_name}`;
     const open = this.card === a.address;
     return [
@@ -883,7 +908,7 @@ export default class RaidParty extends View {
       .absolute()
       .left(d.x - 44)
       .top(d.y - 78)
-      .child(image(`${ART}/${c}-rag-${tilt}.png`).w(88).h(88));
+      .child(image(this.look(c, `-rag-${tilt}`)).w(88).h(88));
   }
 
   you_() {
@@ -922,13 +947,13 @@ export default class RaidParty extends View {
                   .top(0)
                   .child(
                     image(
-                      `${ART}/${c}-${!this.youFights ? "f" : [0, "a1", "a2", "a2", 0][this.phaseOf(YOU)] || "f"}-${this.youDir > 0 ? "r" : "l"}.png`,
+                      this.look(c, `-${!this.youFights ? "f" : [0, "a1", "a2", "a2", 0][this.phaseOf(YOU)] || "f"}-${this.youDir > 0 ? "r" : "l"}`),
                     )
                       .w(96)
                       .h(72),
                   ),
               )
-          : image(`${ART}/${c}${this.walking ? (this.step ? "-walk-r" : "-walk-l") : ""}.png`).w(72).h(72),
+          : image(this.look(c, this.walking ? (this.step ? "-walk-r" : "-walk-l") : "")).w(72).h(72),
       )
       .child(div().px(6).rounded(7).bg(this.card === YOU ? "#00000080" : "#00000040").text_size(10).font_semibold().text_color(CREAM).child("You"));
   }
@@ -988,7 +1013,7 @@ export default class RaidParty extends View {
               this.save();
               cx.notify();
             })
-            .child(image(`${ART}/${c}.png`).w(36).h(36))
+            .child(image(this.look(c)).w(36).h(36))
             .child(div().text_size(9).font_semibold().text_color(GOLD).child(`Lv ${classLevel(this.progress.xp[c]).level}`)),
         ),
       );
@@ -1008,7 +1033,7 @@ export default class RaidParty extends View {
       .border(1)
       .border_color("#31506f")
       // the sprite at 6px a pixel, shifted so the head fills the frame
-      .child(div().absolute().left(-26).top(-10).child(image(`${ART}/${this.sprites[key]}.png`).w(108).h(108)))
+      .child(div().absolute().left(-26).top(-10).child(image(this.look(this.sprites[key])).w(108).h(108)))
       .child(
         div()
           .id("idle-rpg-card-wrench")
@@ -1218,6 +1243,7 @@ export default class RaidParty extends View {
           // the table and the barrel stand at the back, clear of the monster's corner
           .child(div().absolute().left(12).top(-34).child(image(`${ART}/table.png`).w(112).h(56)))
           .child(div().absolute().left(136).top(-30).child(image(`${ART}/barrel.png`).w(48).h(52)))
+          .when(!this.battle, (el) => el.children(this.stations()))
           .children(actors.flatMap((p) => p.draw()))
           .child(this.gloom(W))
           .when(list.length === 0, (el) =>
@@ -1286,19 +1312,19 @@ export default class RaidParty extends View {
         if (pr.kind === YOU) {
           if (still) {
             this.codex = false;
-            this.skillsOpen = null;
+            this.skillsOpen = this.shopOpen = null;
             this.card = this.card === YOU ? null : YOU;
             this.picking = false;
           }
         } else if (pr.kind === "critter") {
           this.codex = false;
-          this.skillsOpen = null;
+          this.skillsOpen = this.shopOpen = null;
           this.card = this.card === pr.address ? null : pr.address;
           this.picking = false;
         } else if (still) {
           this.card = null;
           this.codex = false;
-          this.skillsOpen = null;
+          this.skillsOpen = this.shopOpen = null;
           this.walkTo(this.point(e), W, cx);
         }
         this.press = null;
@@ -1342,16 +1368,25 @@ export default class RaidParty extends View {
                           .hover((st) => st.bg("#ffffff30"))
                           .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
                           .on_click((_e, cx) => {
-                            this.codex = !this.codex;
-                            if (this.codex) {
-                              // only one panel or card at a time
-                              this.skillsOpen = this.card = null;
-                              this.picking = false;
-                            }
+                            this.openCodex(!this.codex);
                             cx.notify();
                           }),
                       )
-                      .child(stat("i-coin", 18, 18, gold)),
+                      .child(
+                        // the gold opens the shop, on your own class
+                        stat("i-coin", 18, 18, gold)
+                          .id("idle-rpg-gold")
+                          .px(3)
+                          .rounded(4)
+                          .bg(this.shopOpen ? "#ffffff30" : "#ffffff00")
+                          .cursor_pointer()
+                          .hover((st) => st.bg("#ffffff30"))
+                          .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+                          .on_click((_e, cx) => {
+                            this.openShop(this.shopOpen ? null : this.sprites[YOU]);
+                            cx.notify();
+                          }),
+                      ),
                   )
                   // once any class has a point, a star with the points to spend
                   // opens the skills panel; gold while there are some, dim when not
@@ -1391,28 +1426,154 @@ export default class RaidParty extends View {
               .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
               .on_click((_e, cx) => {
                 this.battle = !this.battle;
+                // the panels open from different places in a raid and out of one
                 this.codex = false;
+                this.skillsOpen = this.shopOpen = null;
                 if (this.battle) this.fight(); // someone to fight straight away
                 this.save();
                 this.wake(cx);
                 cx.notify();
               })
-              .child(this.battle ? "End Raid" : "Start Raid"),
+              .child(this.battle ? "Return to town" : "Start Raid"),
           ),
       )
       .child(floor)
       // last, so they lie over the floor and everyone on it
-      .when(this.codex && this.battle, (el) => el.child(this.codexCard(props()?.inset ?? 84)))
-      .when(CLASSES.includes(this.skillsOpen), (el) => el.child(this.skillsCard(props()?.inset ?? 84)));
+      .when(this.codex, (el) => el.child(this.codexCard(props()?.inset ?? 84)))
+      .when(CLASSES.includes(this.skillsOpen), (el) => el.child(this.skillsCard(props()?.inset ?? 84)))
+      .when(CLASSES.includes(this.shopOpen), (el) => el.child(this.shopCard(props()?.inset ?? 84)));
   }
 
-  // Opens the skills panel on class `cls` (null closes it), closing the codex
-  // and any card: only one of them is open at a time.
+  // Opens the skills panel on class `cls` (null closes it), closing the codex,
+  // the shop and any card: only one of them is open at a time.
   openSkills(cls) {
     this.skillsOpen = cls;
     if (!cls) return;
     this.codex = false;
-    this.card = null;
+    this.shopOpen = this.card = null;
+    this.picking = false;
+  }
+
+  // Opens or closes the codex, closing the other panels and any card.
+  openCodex(open) {
+    this.codex = open;
+    if (!open) return;
+    this.skillsOpen = this.shopOpen = this.card = null;
+    this.picking = false;
+  }
+
+  // Between raids the rampart has three stations, each opening one of the
+  // panels the sign's chips open during one: the book on the table is the
+  // codex, the merchant's stall the shop, and the training dummy the skills
+  // (with the points waiting to be spent, if any). Returns elements for the
+  // floor; they stand at the back, between the banners and torches.
+  stations() {
+    const spare = CLASSES.reduce((sum, c) => sum + pointsLeft(this.progress, c), 0);
+    // Under the pointer a station shows it can be used, plainly enough for
+    // broad daylight and in the scene's own style: its picture gains a white
+    // pixel outline (the "-hot" pictures) and hops up a pixel of art, a white
+    // arrow bobs over it, and its name goes white on a darker pill.
+    // `inside(hot)` is what hops; `still(hot)` stays put behind it
+    const station = (id, left, top, w, h, name, act, inside, still = () => []) => {
+      const hot = this.hot === id;
+      return div()
+        .id(`idle-rpg-station-${id}`)
+        .absolute()
+        .left(left)
+        .top(top)
+        .w(w)
+        .h(h)
+        .cursor_pointer()
+        .on_hover((hovered, cx) => {
+          if (hovered) this.hot = id;
+          else if (this.hot === id) this.hot = null;
+          cx.notify();
+        })
+        .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+        .on_click((_e, cx) => {
+          act();
+          cx.notify();
+        })
+        .children(still(hot))
+        .child(
+          div()
+            .id(`idle-rpg-station-${id}-art`)
+            .absolute()
+            .left(0)
+            .top(hot ? -4 : 0)
+            .transition("top", { duration: 120, easing: "ease-out" })
+            .children(inside(hot)),
+        )
+        .child(
+          h_flex()
+            .absolute()
+            .left(w / 2 - 40)
+            .top(h + 3)
+            .w(80)
+            .justify_center()
+            .child(
+              div()
+                .px(5)
+                .rounded(7)
+                .bg(hot ? "#000000b8" : "#00000066")
+                .text_size(10)
+                .font_semibold()
+                .text_color(hot ? "#ffffff" : CREAM)
+                .child(name),
+            ),
+        )
+        .when(hot, (el) =>
+          el.child(
+            div()
+              .absolute()
+              .left(w / 2 - 14)
+              .top(-38)
+              .loop("top", { from: -38, to: -30, period: 420 })
+              .child(image(`${ART}/arrow.png`).w(28).h(20)),
+          ),
+        );
+    };
+    // a picture, or under the pointer its outlined twin, a pixel of art (4px) bigger on every side
+    const art = (name, hot, w, h, left = 0, top = 0) =>
+      div()
+        .absolute()
+        .left(hot ? left - 4 : left)
+        .top(hot ? top - 4 : top)
+        .child(image(`${ART}/${name}${hot ? "-hot" : ""}.png`).w(hot ? w + 8 : w).h(hot ? h + 8 : h));
+    return [
+      // over the table that is always there, with the book lying on it
+      station(
+        "codex",
+        12,
+        -34,
+        112,
+        56,
+        "Codex",
+        () => this.openCodex(!this.codex),
+        (hot) => [art("book", hot, 32, 24, 36, -8)],
+        (hot) => (hot ? [art("table", true, 112, 56)] : []), // outlined over the table that is always there
+      ),
+      station(
+        "skills",
+        204,
+        -52,
+        48,
+        72,
+        spare > 0 ? `Skills +${spare}` : "Skills",
+        () => this.openSkills(this.skillsOpen ? null : (CLASSES.find((c) => pointsLeft(this.progress, c) > 0) ?? this.sprites[YOU])),
+        (hot) => [art("dummy", hot, 48, 72)],
+      ),
+      station("shop", 304, -64, 104, 84, "Shop", () => this.openShop(this.shopOpen ? null : this.sprites[YOU]), (hot) => [art("stall", hot, 104, 84)]),
+    ];
+  }
+
+  // Opens the shop on class `cls` (null closes it), closing the codex, the
+  // skills panel and any card.
+  openShop(cls) {
+    this.shopOpen = cls;
+    if (!cls) return;
+    this.codex = false;
+    this.skillsOpen = this.card = null;
     this.picking = false;
   }
 
@@ -1477,6 +1638,30 @@ export default class RaidParty extends View {
       .when(slain > known, (el) => el.child(line(div(), "Before the codex", slain - known)));
   }
 
+  // A small button in a panel: live, or dimmed and dead. `act` does what it
+  // says and returns whether anything changed, which is then saved straight away.
+  button(id, label, live, act) {
+    return div()
+      .id(id)
+      .flex_none()
+      .px(5)
+      .rounded(5)
+      .text_size(10)
+      .font_semibold()
+      .bg(live ? "#5cc8ff" : "#ffffff0a")
+      .text_color(live ? "#06243a" : "#5d7088")
+      .when(live, (el) =>
+        el
+          .cursor_pointer()
+          .hover((st) => st.bg("#8ad8ff"))
+          .on_click((_e, cx) => {
+            if (act()) this.save();
+            cx.notify();
+          }),
+      )
+      .child(label);
+  }
+
   // The skills panel, under the sign like the codex: the four classes to pick
   // from, each with its level and any points it has to spend; then for the
   // one picked, its points, a Reset that gives them all back, and a line per
@@ -1487,27 +1672,6 @@ export default class RaidParty extends View {
     const ranks = this.progress.skills[cls];
     const spare = pointsLeft(this.progress, cls);
     const spent = pointsSpent(ranks) > 0;
-    // a small button: live, or dimmed and dead
-    const button = (id, label, live, act) =>
-      div()
-        .id(id)
-        .flex_none()
-        .px(5)
-        .rounded(5)
-        .text_size(10)
-        .font_semibold()
-        .bg(live ? "#5cc8ff" : "#ffffff0a")
-        .text_color(live ? "#06243a" : "#5d7088")
-        .when(live, (el) =>
-          el
-            .cursor_pointer()
-            .hover((st) => st.bg("#8ad8ff"))
-            .on_click((_e, cx) => {
-              if (act()) this.save(); // a point spent or given back is saved straight away
-              cx.notify();
-            }),
-        )
-        .child(label);
     const tab = (c) => {
       const n = pointsLeft(this.progress, c);
       return v_flex()
@@ -1525,7 +1689,7 @@ export default class RaidParty extends View {
           this.skillsOpen = c;
           cx.notify();
         })
-        .child(image(`${ART}/${c}.png`).w(24).h(24))
+        .child(image(this.look(c)).w(24).h(24))
         .child(
           h_flex()
             .gap(3)
@@ -1542,7 +1706,7 @@ export default class RaidParty extends View {
         .child(div().w(38).flex_none().text_color("#dbe7f3").child(capital(k)))
         .child(div().w(22).flex_none().font_semibold().text_color(GOLD).child(`${ranks[k]}/${MAX_RANK}`))
         .child(div().flex_1().min_w(0).truncate().text_size(10).text_color("#8ea3bb").child(SKILL_TEXT[k]?.(ranks) ?? ""))
-        .child(button(`idle-rpg-skill-${k}`, "+", canRaise(this.progress, cls, k), () => raise(this.progress, cls, k)));
+        .child(this.button(`idle-rpg-skill-${k}`, "+", canRaise(this.progress, cls, k), () => raise(this.progress, cls, k)));
     return v_flex()
       .id("idle-rpg-skills")
       .absolute()
@@ -1590,8 +1754,172 @@ export default class RaidParty extends View {
               .text_color(spare > 0 ? GOLD : "#8ea3bb")
               .child(`${capital(cls)}: ${spare > 0 ? `${spare} point${spare === 1 ? "" : "s"} to spend` : "no points to spend"}`),
           )
-          .child(button("idle-rpg-skills-reset", "Reset", spent, () => resetSkills(this.progress, cls))),
+          .child(this.button("idle-rpg-skills-reset", "Reset", spent, () => resetSkills(this.progress, cls))),
       )
       .children((CLASS_SKILLS[cls] ?? []).map(skill));
+  }
+
+  // The shop, under the sign like the skills panel: your gold, the four
+  // classes to pick from (each in the colourway it has on), then for the one
+  // picked, everything of one kind the shop sells: a preview of the sprite in
+  // it, its name, and "Equipped", an Equip button (owned) or a Buy button with
+  // its price, dimmed and dead while the gold is short. Buying puts it on as
+  // well; buying and equipping save straight away. Down its left side are the
+  // kinds of item (SHOP in rules.js): armours, weapons, hats, with room under
+  // them for more. A kind with nothing for sale yet says so. Short enough for
+  // the scene at its lowest (230px, the sign taking 54).
+  shopCard(left) {
+    const cls = this.shopOpen;
+    const kind = SHOP_KINDS.includes(this.shopKind) ? this.shopKind : SHOP_KINDS[0];
+    const items = catalogue(cls, kind);
+    const preview = { armour: (it) => image(this.look(cls, "", it.id)).w(36).h(36) };
+    const nav = (k) =>
+      h_flex()
+        .id(`idle-rpg-shop-kind-${k}`)
+        .gap(5)
+        .items_center()
+        .px(4)
+        .py(3)
+        .rounded(6)
+        .border(1)
+        .border_color(k === kind ? "#5cc8ff" : "#00000000")
+        .bg(k === kind ? "#5cc8ff22" : "#ffffff0a")
+        .cursor_pointer()
+        .hover((st) => st.bg("#ffffff1c"))
+        .on_click((_e, cx) => {
+          this.shopKind = k;
+          cx.notify();
+        })
+        .child(image(`${ART}/${SHOP_ICONS[k] ?? "i-coin"}.png`).w(18).h(18))
+        .child(div().text_size(10).font_semibold().text_color(CREAM).child(SHOP[k].name));
+    const tab = (id, on, act, ...content) =>
+      v_flex()
+        .id(id)
+        .flex_1()
+        .items_center()
+        .py(2)
+        .rounded(6)
+        .border(1)
+        .border_color(on ? "#5cc8ff" : "#00000000")
+        .bg(on ? "#5cc8ff22" : "#ffffff0a")
+        .cursor_pointer()
+        .hover((st) => st.bg("#ffffff1c"))
+        .on_click((_e, cx) => {
+          act();
+          cx.notify();
+        })
+        .children(content);
+    const item = (it) => {
+      const on = equipped(this.progress, cls, kind) === it.id;
+      return v_flex()
+        .id(`idle-rpg-shop-item-${it.id}`)
+        .flex_1()
+        .min_w(0)
+        .h(SHOP_ITEM_H)
+        .items_center()
+        .gap(2)
+        .py(3)
+        .rounded(6)
+        .border(1)
+        .border_color(on ? "#5cc8ff" : "#00000000")
+        .bg(on ? "#5cc8ff22" : "#ffffff0a")
+        .child(preview[kind]?.(it) ?? div().h(36))
+        .child(div().max_w_full().truncate().text_size(10).text_color("#dbe7f3").child(it.name))
+        .child(
+          on
+            ? div().text_size(9).font_semibold().text_color("#5cc8ff").child("Equipped")
+            : owns(this.progress, cls, kind, it.id)
+              ? this.button(`idle-rpg-shop-equip-${it.id}`, "Equip", true, () => equip(this.progress, cls, kind, it.id))
+              : this.button(`idle-rpg-shop-buy-${it.id}`, `Buy ${it.price}`, canBuy(this.progress, cls, kind, it.id), () => {
+                  if (!buy(this.progress, cls, kind, it.id)) return false;
+                  equip(this.progress, cls, kind, it.id);
+                  return true;
+                }),
+        );
+    };
+    return v_flex()
+      .id("idle-rpg-shop")
+      .absolute()
+      .left(left)
+      .top(54)
+      .w(SHOP_NAV_W + 8 + CARD_W)
+      .p(8)
+      .gap(6)
+      .rounded(8)
+      .bg("#101a2cf0")
+      .border(1)
+      .border_color("#ffffff24")
+      .text_size(11)
+      .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+      .child(
+        h_flex()
+          .gap(6)
+          .items_center()
+          .child(image(`${ART}/i-coin.png`).w(18).h(18))
+          .child(div().flex_1().text_size(12).font_semibold().text_color("#ffffff").child("Shop"))
+          .child(div().font_semibold().text_color(GOLD).child(`${this.progress.gold} gold`))
+          .child(
+            div()
+              .id("idle-rpg-shop-x")
+              .px(5)
+              .rounded(5)
+              .text_color("#8ea3bb")
+              .cursor_pointer()
+              .hover((st) => st.bg("#ffffff1c"))
+              .on_click((_e, cx) => {
+                this.shopOpen = null;
+                cx.notify();
+              })
+              .child("×"),
+          ),
+      )
+      .child(
+        h_flex()
+          .gap(8)
+          .items_start()
+          .child(
+            // down the left: the kinds of item, and room for more
+            v_flex()
+              .w(SHOP_NAV_W)
+              .flex_none()
+              .gap(3)
+              .children(SHOP_KINDS.map(nav))
+              .child(div().px(4).pt(2).text_size(9).text_color("#8ea3bb").child("More soon")),
+          )
+          .child(
+            v_flex()
+              .flex_1()
+              .min_w(0)
+              .gap(3)
+              .child(
+                h_flex()
+                  .gap(4)
+                  .children(
+                    CLASSES.map((c) =>
+                      tab(
+                        `idle-rpg-shop-${c}`,
+                        c === cls,
+                        () => (this.shopOpen = c),
+                        image(this.look(c)).w(24).h(24),
+                        div().text_size(9).font_semibold().text_color(CREAM).child(capital(c)),
+                      ),
+                    ),
+                  ),
+              )
+              .child(
+                items.length
+                  ? h_flex().gap(4).children(items.map(item))
+                  : // the same height as a row of items, so the panel does not jump between kinds
+                    v_flex()
+                      .h(SHOP_ITEM_H)
+                      .items_center()
+                      .justify_center()
+                      .rounded(6)
+                      .bg("#ffffff0a")
+                      .text_color("#8ea3bb")
+                      .child(`No ${SHOP[kind].name.toLowerCase()} for sale yet`),
+              ),
+          ),
+      );
   }
 }

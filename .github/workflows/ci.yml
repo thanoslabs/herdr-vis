@@ -45,6 +45,25 @@ jobs:
             node --input-type=module --check < "$f" || { echo "Syntax error: $f"; exit 1; }
           done
 
+      - name: Check the art
+        run: |
+          # art/ holds exactly the files the generator writes, by name
+          out="$(mktemp -d)"
+          python3 tools/idle-rpg-sprites.py "$out" > /dev/null
+          diff <(ls "$out") <(ls idle-rpg/mods/idle-rpg/art) || { echo "art/ and the generator disagree: regenerate it"; exit 1; }
+          # and every picture the rules can ask for is there
+          node --input-type=module <<'EOF'
+          import { existsSync } from "node:fs";
+          import { CLASSES, FRAMES, catalogue, lookArt } from "./idle-rpg/mods/idle-rpg/rules.js";
+          const missing = CLASSES.flatMap((c) =>
+            catalogue(c, "armour").flatMap((it) => FRAMES.map((f) => `idle-rpg/mods/idle-rpg/art/${lookArt(c, it.id)}${f}.png`)),
+          ).filter((p) => !existsSync(p));
+          if (missing.length) {
+            console.error(`Missing art:\n${missing.join("\n")}`);
+            process.exit(1);
+          }
+          EOF
+
       - name: Install into an empty Herdr home
         run: |
           home="$(mktemp -d)"
