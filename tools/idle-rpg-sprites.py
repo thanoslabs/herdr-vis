@@ -424,6 +424,75 @@ save("barrel.png", chars([
     ".tTtTTtTTtd.",
     "..dddddddd..",
 ], {"T": "#b98047", "t": "#9a6639", "d": "#6e4525", "m": "#4a515c"}))
+
+# ---- The campfire, in the middle of the floor between raids (scenery, not a
+# station). "campfire" is the ring of stones, the logs leaning together and the
+# low heart of the flames, outlined like the sprites except the flames; it never
+# changes. "campfire-1" to "-3" are taller flames laid over it, each fading in
+# and out on its own rhythm so the fire flickers. Their lower rows match the
+# heart's colours, so only the tongues change as they fade. The flames are the
+# torch's colours and, like the torch's, have no outline. 16x13, plus a pixel
+# of margin all round for the outline.
+FIRE = {"W": "#fff3b0", "y": "#ffe27a", "o": "#ff9d3c", "r": "#e2552f",
+        "g": "#9aa3ad", "G": "#7d8590", "S": "#646c78", "m": "#4a515c",   # the wall's stone
+        "b": "#7a5230", "B": "#9a6639", "d": "#5a3d22", "c": "#d9b27a"}   # wood, and its cut ends
+# `heart`, for the stones and logs: outline them, then lay the flames' heart over that
+def campfire(name, rows, heart=None):
+    g = [[None] * 18 for _ in range(15)]
+    for y, row in enumerate(chars(rows, FIRE)):
+        for x, c in enumerate(row): g[y + 1][x + 1] = c
+    if heart:
+        g = [[OUTLINE if g[y][x] is None and any(0 <= y+j < 15 and 0 <= x+i < 18 and g[y+j][x+i] for i, j in ((1,0),(-1,0),(0,1),(0,-1)))
+              else g[y][x] for x in range(18)] for y in range(15)]
+        for y, row in enumerate(heart):
+            for x, c in enumerate(row):
+                if c != ".": g[y + 1][x + 1] = FIRE[c]
+    save(name, g)
+
+FLAME_HEART = [
+    "", "", "", "", "", "",
+    "....royWWyor....",
+    "....royWWyor....",
+    ".....oyyyyo.....",
+    "......oooo......",
+]
+campfire("campfire.png", [
+    "",
+    "",
+    "",
+    "",
+    "",
+    "......d..d......",
+    ".....dB..Bd.....",
+    "..c.dBr..rBd.c..",
+    "..bBdBorroBdBb..",
+    "...dbbbbbbbbd...",
+    ".gGg.dbbbbd.gGg.",
+    "gGGSgGgGgGgGgGGS",
+    ".SSmSSmSSSmSSSm.",
+], FLAME_HEART)
+for i, tongues in enumerate([
+    [".......r........",                                     # tall, leaning right, a wisp beside it
+     "......ry...r....",
+     "......ryr..r....",
+     ".....ryyor.r....",
+     ".....roWyorr....",
+     "....rroWWyor...."],
+    ["........r.......",                                     # tall, a wisp on the left
+     "....r...yr......",
+     "....r..ryr......",
+     "....r.royyr.....",
+     "....rroyWor.....",
+     "....royWWyor...."],
+    ["",                                                     # low and broad
+     "",
+     "........r.......",
+     "......r.yr......",
+     ".....ryryor.....",
+     "....royyWyor...."],
+], 1):
+    campfire(f"campfire-{i}.png", tongues + FLAME_HEART[6:])
+
 save("wrench.png", chars([  # double-ended: an open jaw at each end
     ".....w.w",
     ".....www",
@@ -493,23 +562,39 @@ icon("done.png", [                                      # done: finished while y
 # the far corners are dim, not black. 74 rows: 20 above the wall, where the dark
 # thins out upward to nothing (so a tall monster is not cut in two at the wall's
 # top), then the wall (16) and the floor (38). `cy` counts from the wall's top.
+# Each light is (cx, cy, near, far, stretch): where the flame is, how far the
+# pool stays clear, where the dark is whole, and how much wider than tall it is.
+# Where pools overlap, the lighter wins.
 RISE = 20
-def dark(name, w, cx=0, cy=0, near=0, far=0, stretch=1.0):
+def dark(name, w, *lights):
     g = blank(w, RISE + 54)
     for y in range(RISE + 54):
         for x in range(w):
             step = 6
-            if far:
+            for cx, cy, near, far, stretch in lights:
                 d = math.hypot((x + 0.5 - cx) / stretch, y + 0.5 - RISE - cy)
                 t = min(1.0, max(0.0, (d - near) / (far - near)))
-                step = round(t * t * (3 - 2 * t) * 6)
+                step = min(step, round(t * t * (3 - 2 * t) * 6))
             step = min(step, 6 * y // RISE)
             if step: g[y][x] = "#0a1030%02x" % round(128 * step / 6)
     save(name, g)
 
-dark("dark-torch.png", 96, 48.5, 4.5, 9, 40, 1.15)      # one torch's stretch of wall, the flame near the top
-dark("dark-candle.png", 68, 28.5, 9, 3, 24)             # the left end, lit only by the candle on the table
+TORCH_LIGHT = (48.5, 4.5, 9, 40, 1.15)
+dark("dark-torch.png", 96, TORCH_LIGHT)                 # one torch's stretch of wall, the flame near the top
+dark("dark-candle.png", 68, (28.5, 9, 3, 24, 1.0))      # the left end, lit only by the candle on the table
 dark("dark-fill.png", 4)                                # no flame: stretched over whatever is left
+# The campfire's stretch (between raids), 56 wide with the fire in the middle,
+# cut into the row of pictures wherever the fire stands. The torches' pools
+# reach into it, so it carries their light as well as its own. The torches'
+# pictures start 68 art px from the left and repeat every 96, and the fire
+# stands at 68 + 4n (16 screen px steps), so "dark-fire-<i>" is the stretch for
+# a fire 4i art px into a torch's picture (i = n mod 24). The fire's own pool is
+# centred on its flames, just above the floor's back edge (its feet are 8 art
+# px into the floor), and lights the floor around it.
+FIRE_LIGHT = (28, 15, 5, 22, 1.25)
+for i in range(24):
+    torches = [(TORCH_LIGHT[0] + 28 - 4 * i + 96 * k,) + TORCH_LIGHT[1:] for k in (-1, 0, 1)]
+    dark(f"dark-fire-{i}.png", 56, FIRE_LIGHT, *torches)
 
 # ---- Sign icons: the counts on the sign, drawn small (shown at 2 screen px a pixel) ----
 icon("i-swords.png", [                                  # working

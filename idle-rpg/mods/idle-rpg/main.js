@@ -117,6 +117,11 @@ const CLOUDS = [
 const CELL_W = 88;
 const YOU_Y = [12, FLOOR_H - 24];
 const CRITTER_Y = [16, FLOOR_H - 42];
+// The campfire between raids (see fireX): where its feet are on the floor, and
+// its picture's size (16x13 art px plus the outline's margin).
+const FIRE_Y = 32;
+const FIRE_W = 72;
+const FIRE_H = 60;
 const CARD_W = 232;
 const SHOP_NAV_W = 78; // the kinds of item down the shop's left side
 const SHOP_ITEM_H = 78; // one thing for sale: picture, name, button
@@ -751,6 +756,8 @@ export default class RaidParty extends View {
 
   walkTo(p, W, cx) {
     const to = { x: Math.round(clamp(p.x, 30, W - 30)), y: Math.round(clamp(p.y, YOU_Y[0], YOU_Y[1])) }; // whole pixels keep the sprite sharp
+    const fire = this.fireX(W);
+    if (fire !== null && Math.abs(to.x - fire) < FIRE_W / 2 + 8) to.y = Math.max(to.y, FIRE_Y + 12); // up to the campfire, not into it
     const dist = Math.hypot(to.x - this.you.x, to.y - this.you.y);
     this.walkMs = clamp(Math.round(dist * 4), 150, 3000);
     this.you = to;
@@ -1012,26 +1019,111 @@ export default class RaidParty extends View {
       .child(pixelText(text, d.crit ? "gold" : "white", scale));
   }
 
+  // Where the campfire stands between raids: the middle of its picture, or
+  // null while it is not drawn (in a raid, or when the scene is narrower than
+  // the fight needs, 640px). It is the middle of the scene to the nearest 16px
+  // (the steps its light in the gloom is drawn for, see gloom), but never
+  // nearer the stations than 464, which keeps it 16px clear of the shop's
+  // stall (its right edge, outlined under the pointer, is at 412).
+  fireX(W) {
+    if (this.battle || W < 640) return null;
+    return 272 + 16 * Math.max(12, Math.round((W / 2 - 272) / 16));
+  }
+
+  // The campfire, standing at x: the stones, the logs and the low heart of the
+  // flames, taller flames fading in and out over them on their own rhythms
+  // (three pictures, so it flickers), two sparks hanging over it, and behind it
+  // a warm glow that flickers like a torch's and brightens at night. Every
+  // motion is a native loop, so it never re-renders the view. It is scenery:
+  // a press on it walks you there like one on the bare floor.
+  campfire(x) {
+    const art = (name) => image(`${ART}/${name}.png`).w(FIRE_W).h(FIRE_H);
+    const flame = (n, from, to, period) => div().absolute().left(0).top(0).loop("opacity", { from, to, period }).child(art(`campfire-${n}`));
+    // a spark: one art pixel, drifting up and down over the flames as it fades in and out
+    const spark = (left, from, to, period, blink) =>
+      div()
+        .absolute()
+        .left(left)
+        .top(from)
+        .loop("top", { from, to, period })
+        .loop("opacity", { from: 0, to: 1, period: blink })
+        .w(4)
+        .h(4)
+        .bg("#ffe27a");
+    return [
+      div()
+        .id("idle-rpg-fire-glow")
+        .absolute()
+        .left(x - 56)
+        .top(FIRE_Y - 64)
+        .w(112)
+        .h(56)
+        .opacity(0.25 + 0.75 * this.night)
+        .transition("opacity", { duration: TICK_MS, easing: "linear" })
+        .child(div().size_full().rounded(28).bg("#ffb34750").loop("opacity", { from: 0.55, to: 1, period: 560 })),
+      div()
+        .absolute()
+        .left(x - FIRE_W / 2)
+        .top(FIRE_Y - FIRE_H)
+        .w(FIRE_W)
+        .h(FIRE_H)
+        .child(art("campfire"))
+        .child(flame(1, 0, 1, 520))
+        .child(flame(2, 1, 0, 740))
+        .child(flame(3, 0.4, 1, 380))
+        .child(spark(40, 0, -16, 1300, 900))
+        .child(spark(24, 4, -8, 1700, 1100)),
+    ];
+  }
+
   // Night on the rampart: darkness over the wall, the floor and everyone on it
   // (but under the cards), fading in with the night. Each torch keeps a pool of
   // light clear around its flame and the candle a small one on the table; past
   // those the dark is even, at half strength, so nothing is ever black, and
   // above the wall it thins out over 80px. The pictures hold all of that, so
   // this is a row of them: the candle's, one per torch, and a plain one
-  // stretched over what is left.
-  gloom(W) {
+  // stretched over what is left. While the campfire is out (`fire`, its x, see
+  // fireX) its own 224px picture, which also carries the torches' light that
+  // reaches it, is cut into the row over it: the pictures it overlaps are
+  // clipped short on either side, so every pixel is darkened exactly once.
+  gloom(W, fire = null) {
     const RISE = 80;
     const H = RISE + WALL_H + FLOOR_H;
-    const piece = (left, w, art) =>
-      div()
-        .absolute()
-        .left(left)
-        .top(0)
-        .child(image(`${ART}/dark-${art}.png`).w(w).h(H));
-    const pieces = [piece(0, 272, "candle")];
+    const cut = fire === null ? null : [fire - 112, fire + 112];
+    // the picture `dark-<art>` laid at `left`, `w` wide, showing only from `from` to `to`
+    const piece = (left, w, art, from = left, to = left + w) =>
+      from === left && to === left + w
+        ? div()
+            .absolute()
+            .left(left)
+            .top(0)
+            .child(image(`${ART}/dark-${art}.png`).w(w).h(H))
+        : div()
+            .absolute()
+            .left(from)
+            .top(0)
+            .w(to - from)
+            .h(H)
+            .overflow_hidden()
+            .child(
+              div()
+                .absolute()
+                .left(left - from)
+                .top(0)
+                .child(image(`${ART}/dark-${art}.png`).w(w).h(H)),
+            );
+    const pieces = [];
+    const lay = (left, w, art) => {
+      if (!cut || left + w <= cut[0] || left >= cut[1]) return pieces.push(piece(left, w, art));
+      if (left < cut[0]) pieces.push(piece(left, w, art, left, cut[0]));
+      if (left + w > cut[1]) pieces.push(piece(left, w, art, cut[1], left + w));
+    };
+    lay(0, 272, "candle");
     let x = 272; // each torch's picture is 384px wide with the flame in the middle; see the torches in scenery
-    for (; x + 276 <= W; x += 384) pieces.push(piece(x, 384, "torch"));
-    if (x < W) pieces.push(piece(x, W - x, "fill"));
+    for (; x + 276 <= W; x += 384) lay(x, 384, "torch");
+    if (x < W) lay(x, W - x, "fill");
+    // the fire stands 16px steps along the torches' pictures; the generator draws one for each step
+    if (cut) pieces.push(piece(cut[0], 224, `fire-${((fire - 272) / 16) % 24}`));
     return div()
       .id("idle-rpg-gloom")
       .absolute()
@@ -1333,6 +1425,9 @@ export default class RaidParty extends View {
     this.struck = (this.youFights && this.phaseOf(YOU) === 4) || list.some((a) => a.status === "working" && this.phaseOf(a.address) === 4);
     this.youDir = youDir;
     const actors = [{ y: you.y, draw: () => [this.you_()] }, { y: MONSTER_Y, draw: () => this.foe(W, hits) }];
+    // the campfire stands among them, so whoever is in front of it is drawn over it (first, so a tie goes to them)
+    const fire = this.fireX(W);
+    if (fire !== null) actors.unshift({ y: FIRE_Y, draw: () => this.campfire(fire) });
     if (this.youFights) actors.push({ y: FLOOR_H, draw: () => this.attack({ key: YOU, cls: this.sprites[YOU], x: you.x, y: you.y, dir: youDir }, W, foeKind) });
     for (const a of list) {
       if (this.drag?.address === a.address) continue;
@@ -1396,7 +1491,7 @@ export default class RaidParty extends View {
           .child(div().absolute().left(136).top(-30).child(image(`${ART}/barrel.png`).w(48).h(52)))
           .when(!this.battle, (el) => el.children(this.stations()))
           .children(actors.flatMap((p) => p.draw()))
-          .child(this.gloom(W))
+          .child(this.gloom(W, fire))
           // over the night's dark, so they read at any hour, and under the cards
           .when(Boolean(foeKind), (el) => el.children(this.damage.map((d) => this.damageNote(d, W, foeKind))))
           .child(this.hud(tally(list), hudTop - this.wallH))
