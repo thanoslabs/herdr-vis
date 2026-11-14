@@ -9,15 +9,15 @@
 // which make every character on that class hit harder, faster or with a
 // chance of a critical blow. Killing a monster earns gold and counts towards
 // its kind. Gold buys looks in the shop, which also belong to a class: every
-// character with that class on wears its colourway and its hat (a hat, once
-// bought, can be worn by any class). Levels are worked out from total
+// character with that class on wears its colourway, its weapon and its hat (a
+// hat, once bought, can be worn by any class). Levels are worked out from total
 // experience, never stored; skill ranks are stored, and points left are
 // worked out from levels and ranks. Settings (SETTINGS) are kept with the
 // rest of the state.
 
 export const CLASSES = ["wizard", "healer", "warrior", "archer"];
 export const YOU = "you"; // the person's key in `sprites`, `xp` and as an open card
-export const STATE_VERSION = 4;
+export const STATE_VERSION = 5;
 // Each kind's HP, kept on a monster as `maxHp` when it turns up. The kinds are
 // the keys of MONSTERS in main.js, which draws them (each needs its pictures
 // in MONSTER_ART below too).
@@ -68,13 +68,15 @@ export const ATTACK_JITTER = 2;
 // (colourways of the whole outfit) are each class's own. Hats are not tied to
 // a class: every class has the same catalogue, and a hat bought once is owned
 // by all four, kept once in the state under the kind's `shared` key, though
-// each class still puts on its own. Weapons are there as a kind, for the shop
-// to list, with empty catalogues. The first item of every catalogue is the
-// class's default look: free, always owned. Buying is for good (no refunds),
-// and changing between owned items is free.
+// each class still puts on its own. Weapons are each class's own, like
+// armours: what it fights with, and what its attacks look like (see
+// attackArt); for now every weapon deals the same damage. The first item of
+// every catalogue is the class's default look: free, always owned. Buying is
+// for good (no refunds), and changing between owned items is free.
 export const DEFAULT_LOOK = "default";
 export const COLOUR_PRICES = [5, 10, 20]; // gold for each class's three colourways after the default, in order
 export const HAT_PRICES = [10, 20, 30]; // gold for each hat after the default, in order, bought once for every class
+export const WEAPON_PRICES = [15, 30, 50]; // gold for each class's three weapons after the default, in order
 // Each class's colourways as [id, name]. The ids after the default, in this
 // order, must match LOOKS in tools/idle-rpg-sprites.py, which draws them.
 const COLOUR_NAMES = {
@@ -88,8 +90,23 @@ const COLOUR_NAMES = {
 // tools/idle-rpg-sprites.py, which draws each over every class.
 const HAT_NAMES = [[DEFAULT_LOOK, "No hat"], ["party", "Party Hat"], ["santa", "Santa Hat"], ["pumpkin", "Pumpkin"]];
 const HATS = HAT_NAMES.map(([id, name], i) => ({ id, name, price: i ? HAT_PRICES[i - 1] : 0 }));
+// What a weapon's attacks will one day carry (they do nothing yet): an
+// element, or null for none, and for the healer's potions, which potion it is.
+export const ELEMENTS = ["fire", "frost", "storm", "poison"];
+export const POTIONS = ["heal", "haste", "might", "hex"];
+// Each class's weapons as [id, name, element] and, for the healer, whose
+// "weapon" is the potion it throws, [id, name, element, potion]. The default is
+// what the class always had. The ids after the default, in this order, must
+// match WEAPONS in tools/idle-rpg-sprites.py, which draws each; ids repeat
+// across classes (a warrior's "flame" is not an archer's).
+const WEAPON_NAMES = {
+  wizard: [[DEFAULT_LOOK, "Fire Staff", "fire"], ["frost", "Ice Wand", "frost"], ["storm", "Bolt Staff", "storm"], ["venom", "Toxic Rod", "poison"]],
+  healer: [[DEFAULT_LOOK, "Heal Vial", null, "heal"], ["haste", "Haste Vial", null, "haste"], ["might", "Might Vial", null, "might"], ["hex", "Hex Vial", null, "hex"]],
+  warrior: [[DEFAULT_LOOK, "Sword", null], ["axe", "War Axe", null], ["hammer", "Hammer", null], ["flame", "Fire Blade", "fire"]],
+  archer: [[DEFAULT_LOOK, "Longbow", null], ["crossbow", "Crossbow", null], ["flame", "Fire Bow", "fire"], ["frost", "Ice Bow", "frost"]],
+};
 // Kinds of item: { name (for the shop), items: { <class>: [{ id, name, price }] },
-// shared? }. `shared` names the state's key for a kind whose items are bought
+// shared? }; a weapon also has { element } and the healer's { potion }. `shared` names the state's key for a kind whose items are bought
 // once for every class: it sells the same to each, and what is owned is kept
 // there, once, instead of per class.
 export const SHOP = {
@@ -99,19 +116,60 @@ export const SHOP = {
       CLASSES.map((c) => [c, COLOUR_NAMES[c].map(([id, name], i) => ({ id, name, price: i ? COLOUR_PRICES[i - 1] : 0 }))]),
     ),
   },
-  weapon: { name: "Weapons", items: Object.fromEntries(CLASSES.map((c) => [c, []])) },
+  weapon: {
+    name: "Weapons",
+    items: Object.fromEntries(
+      CLASSES.map((c) => [
+        c,
+        WEAPON_NAMES[c].map(([id, name, element, potion], i) => ({ id, name, price: i ? WEAPON_PRICES[i - 1] : 0, element, ...(potion ? { potion } : {}) })),
+      ]),
+    ),
+  },
   hat: { name: "Hats", items: Object.fromEntries(CLASSES.map((c) => [c, HATS])), shared: "hats" },
 };
 export const SHOP_KINDS = Object.keys(SHOP);
 
 // Every picture a class has, as its path inside the look's folder (see
-// lookArt) and the hat's (see hatArt), without ".png": standing, walking,
-// dangling, and the fighting poses (stance, wind-up, strike) facing each way.
-// main.js draws them; tools/idle-rpg-sprites.py draws each of them in every
-// colourway, and every hat to lay over each.
+// lookArt), the weapon's (see weaponArt) and the hat's (see hatArt), without
+// ".png": standing, walking, dangling, and the fighting poses (stance,
+// wind-up, strike) facing each way. main.js draws them;
+// tools/idle-rpg-sprites.py draws each of them in every colourway, and every
+// weapon and hat to lay over each.
 export const POSES = ["stance", "windup", "strike"];
 export const FRAMES = ["stand", "walk/l", "walk/r", "rag/c", "rag/l", "rag/r", ...POSES.flatMap((p) => [`${p}/l`, `${p}/r`])];
 const frameOf = (frame) => (FRAMES.includes(frame) ? frame : FRAMES[0]);
+// The pictures each class's weapons have: all of them, but the healer's, whose
+// weapon is the potion it holds up only as it winds up to throw (its staff is
+// part of its body).
+export const WEAPON_FRAMES = Object.fromEntries(CLASSES.map((c) => [c, c === "healer" ? ["windup/l", "windup/r"] : FRAMES]));
+
+// What each weapon's attack looks like, per class and weapon id: { shot, hit },
+// paths in art/ without ".png", "*" standing for the way it faces ("l" or "r").
+// "shot" is the warrior's slash, the arrow, the spell or the thrown potion;
+// "hit" is where it lands (the warrior's slash is its own hit). Every variant of
+// one is the same size (see Attacks in tools/idle-rpg-sprites.py).
+export const ATTACK_PARTS = ["shot", "hit"];
+const ATTACK_ART = {
+  wizard: {
+    [DEFAULT_LOOK]: { shot: "attacks/spell/fire/*", hit: "attacks/burst/fire" },
+    frost: { shot: "attacks/spell/frost/*", hit: "attacks/burst/frost" },
+    storm: { shot: "attacks/spell/storm/*", hit: "attacks/burst/storm" },
+    venom: { shot: "attacks/spell/poison/*", hit: "attacks/burst/poison" },
+  },
+  healer: Object.fromEntries(WEAPON_NAMES.healer.map(([id, , , potion]) => [id, { shot: `attacks/potion/${potion}`, hit: `attacks/splash/${potion}` }])),
+  warrior: {
+    [DEFAULT_LOOK]: { shot: "attacks/slash/default/*" },
+    axe: { shot: "attacks/slash/heavy/*" },
+    hammer: { shot: "attacks/slash/smash/*" },
+    flame: { shot: "attacks/slash/flame/*" },
+  },
+  archer: {
+    [DEFAULT_LOOK]: { shot: "attacks/arrow/default/*", hit: "status/spark" },
+    crossbow: { shot: "attacks/arrow/bolt/*", hit: "status/spark" },
+    flame: { shot: "attacks/arrow/fire/*", hit: "attacks/spark/fire" },
+    frost: { shot: "attacks/arrow/frost/*", hit: "attacks/spark/frost" },
+  },
+};
 
 // The pictures in art/ are in folders by what they show, then by what it is
 // doing (see tools/idle-rpg-sprites.py). The functions here build the path,
@@ -427,6 +485,38 @@ export function lookArt(cls, colour, frame = FRAMES[0]) {
   return `classes/${c}/${look}/${frameOf(frame)}.png`;
 }
 
+// The id of `cls`'s weapon `weapon` if it is one of the class's (an unknown
+// class counts as the first), else the default.
+function weaponOf(cls, weapon) {
+  const c = CLASSES.includes(cls) ? cls : CLASSES[0];
+  return [c, itemOf(c, "weapon", weapon) ? weapon : DEFAULT_LOOK];
+}
+
+// The path in art/ of weapon `weapon`'s picture `frame` for class `cls`:
+// weapons/<class>/<weapon>/<frame>.png ("weapons/warrior/axe/walk/l.png"),
+// laid over the class's picture of the same frame at the same size and under
+// its hat. Anything that is not one of the class's weapons gets its default
+// (a class always holds one), an unknown class or frame the first, as in
+// lookArt, so no other string can end up in a path. Null for a picture the
+// weapon has none for (WEAPON_FRAMES): the healer's potion shows only as it
+// winds up.
+export function weaponArt(cls, weapon, frame = FRAMES[0]) {
+  const [c, w] = weaponOf(cls, weapon);
+  const f = frameOf(frame);
+  return WEAPON_FRAMES[c].includes(f) ? `weapons/${c}/${w}/${f}.png` : null;
+}
+
+// The path in art/ of the picture for `part` (one of ATTACK_PARTS) of an
+// attack by class `cls` with weapon `weapon`, facing `side` ("l" or "r"; for
+// those that face a way): "attacks/arrow/fire/r.png". The weapon and class are
+// checked as in weaponArt, any side but "l" is "r", and a part the attack does
+// not have (the warrior's "hit") is null.
+export function attackArt(cls, weapon, part, side = "r") {
+  const [c, w] = weaponOf(cls, weapon);
+  const art = ATTACK_PARTS.includes(part) ? ATTACK_ART[c][w]?.[part] : undefined;
+  return art ? `${art.replace("*", side === "l" ? "l" : "r")}.png` : null;
+}
+
 // The path in art/ of hat `hat`'s picture `frame` for class `cls`:
 // hats/<hat>/<class>/<frame>.png ("hats/party/wizard/walk/l.png"), laid over
 // the class's picture of the same frame at the same size. Null for no hat:
@@ -444,17 +534,24 @@ function kept(list, items) {
   return items.map((it) => it.id).filter((id) => id !== DEFAULT_LOOK && saved.includes(id));
 }
 
-// A class's saved looks: per kind, the items it owns, in catalogue order with
-// the default always among them and anything unknown or repeated dropped,
-// and the one it has on, which falls back to the default if it is not owned.
-// A kind bought for every class keeps only the one on, checked against
-// `shared`, what everyone owns ({ hats: [<id>] }, already checked).
-function looksOf(saved, cls, shared) {
+// The version that first sold weapons: state saved before it owns and holds
+// only each class's default weapon, whatever it says, since nothing else could
+// have been bought.
+const WEAPONS_SINCE = 5;
+
+// A class's saved looks, from state saved by version `version`: per kind, the
+// items it owns, in catalogue order with the default always among them and
+// anything unknown or repeated dropped, and the one it has on, which falls
+// back to the default if it is not owned. A kind bought for every class keeps
+// only the one on, checked against `shared`, what everyone owns ({ hats:
+// [<id>] }, already checked).
+function looksOf(saved, cls, shared, version) {
   return Object.fromEntries(
     SHOP_KINDS.map((kind) => {
       // armours were first saved as "colour"
       const key = record(saved) && !has(saved, kind) && kind === "armour" ? "colour" : kind;
-      const slot = record(saved) && has(saved, key) && record(saved[key]) ? saved[key] : {};
+      const sold = kind !== "weapon" || version >= WEAPONS_SINCE;
+      const slot = sold && record(saved) && has(saved, key) && record(saved[key]) ? saved[key] : {};
       // the default always, also for a kind with nothing for sale yet
       const owned = [DEFAULT_LOOK, ...(SHOP[kind].shared ? shared[SHOP[kind].shared] : kept(slot.owned, catalogue(cls, kind)))];
       const on = owned.includes(slot.equipped) ? slot.equipped : DEFAULT_LOOK;
@@ -493,8 +590,8 @@ function ranksOf(saved, cls, xp) {
 }
 
 // The saved state as this version keeps it, from whatever was read back:
-// older versions without the progress fields, skill ranks, looks, hats or
-// settings, or anything malformed. Never throws; a bad field falls back to
+// older versions without the progress fields, skill ranks, looks, weapons,
+// hats or settings, or anything malformed. Never throws; a bad field falls back to
 // its default, a bad entry is dropped.
 //
 // State written by a later version keeps its version number: this version can
@@ -522,8 +619,9 @@ export function loadState(saved, now = Date.now()) {
     xp,
     // version 1 had no skills: every rank starts at 0
     skills: Object.fromEntries(CLASSES.map((c) => [c, ranksOf(record(s.skills) ? s.skills[c] : undefined, c, xp[c])])),
-    // versions 1 and 2 had no shop: every class owns and wears its default
-    looks: Object.fromEntries(CLASSES.map((c) => [c, looksOf(record(s.looks) && has(s.looks, c) ? s.looks[c] : undefined, c, shared)])),
+    // versions 1 and 2 had no shop: every class owns and wears its default;
+    // versions 1 to 4 sold no weapons: every class owns and holds its default
+    looks: Object.fromEntries(CLASSES.map((c) => [c, looksOf(record(s.looks) && has(s.looks, c) ? s.looks[c] : undefined, c, shared, count(s.version))])),
     ...shared, // hats: [<id>], owned by every class
     // versions 1 to 3 had no settings: every one starts at its default
     settings: settingsOf(s.settings),
