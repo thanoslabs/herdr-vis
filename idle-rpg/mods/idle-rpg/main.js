@@ -23,8 +23,9 @@
 // that class a skill point, spent in the skills panel on Power (damage),
 // Haste (attack speed) or Crit (double damage now and then). Levels show on
 // the cards and the class choices, gold, kills and points to spend on the sign.
-// Gold buys colourways for a class in the shop (the coin on the sign); everyone
-// with that class on wears the one it has equipped.
+// Gold buys colourways and hats for a class in the shop (the coin on the
+// sign); everyone with that class on wears what it has equipped. A hat is
+// bought once for every class, and each class picks its own.
 // In the top-right corner, how many agents are in each status (an icon with a
 // count on its corner, hidden at none), and a gear that opens the settings
 // (SETTINGS in rules.js), such as the damage numbers that rise off the monster.
@@ -58,6 +59,7 @@ import {
   equipped,
   firstAttack,
   glyphArt,
+  hatArt,
   loadState,
   lookArt,
   monsterHp,
@@ -77,8 +79,9 @@ const ART = "mods/idle-rpg/art";
 // shared: { version, you: {x, y}, spots: { <address>: {x, y} }, sprites: { you | <address>: <class> },
 //   seen, battle, monster, slain, gold, kills: { <kind>: n }, xp: { you | <class>: n },
 //   skills: { <class>: { power, haste, crit } },
-//   looks: { <class>: { armour | weapon | hat: { owned: [<id>], equipped: <id> } } },
-//   settings: { damageNumbers } } (see loadState)
+//   looks: { <class>: { armour | weapon: { owned: [<id>], equipped: <id> }, hat: { equipped: <id> } } },
+//   hats: [<id>], settings: { damageNumbers } }
+//   (hats are owned by every class; see loadState)
 const STATE = "idle-rpg.state";
 const randomClass = () => CLASSES[Math.floor(Math.random() * CLASSES.length)];
 const STATUS = {
@@ -143,6 +146,15 @@ const FLIGHT = TICK_STEP * 2;
 const POP_FADE = 350; // an impact fades out this long; rules.js counts on it being under two ticks
 const BLINK_MS = 5200; // monsters blink this often
 const ROAR_MS = 14000; // and the ogre roars this often
+const DRAGON_ROAR_MS = 19000; // the dragon's roar is a bigger show, so a little rarer
+// The dragon's roar, step by step, and how long each step shows: it rears
+// back, roars with its jaws wide while its upper body shakes and rings of
+// sound leave its mouth, then settles back to breathing.
+const DRAGON_ROAR = [
+  ["rear", 300],
+  ["roar", 950],
+  ["settle", 250],
+];
 const MOVE = { duration: 700, easing: "ease-in-out" }; // walking between spots and the formation
 const CHEER_MS = 2400; // a level-up note over someone's head rises and fades this long
 const CRIT_MS = 1200; // a critical blow's number rises and fades this long
@@ -237,7 +249,7 @@ export default class RaidParty extends View {
     this.seen = saved.seen; // <address>: when it was last here
     this.battle = saved.battle;
     this.monster = saved.monster; // { kind, hp, maxHp, id, slainAt? }
-    this.progress = { slain: saved.slain, gold: saved.gold, kills: saved.kills, xp: saved.xp, skills: saved.skills, looks: saved.looks };
+    this.progress = { slain: saved.slain, gold: saved.gold, kills: saved.kills, xp: saved.xp, skills: saved.skills, looks: saved.looks, hats: saved.hats };
     this.settings = saved.settings; // { <key>: on } for every one of SETTINGS
     this.cheerSeq = 0;
     // The damage numbers on screen, oldest first, while the setting is on (it
@@ -267,8 +279,22 @@ export default class RaidParty extends View {
         cx.notify();
       });
     };
-    cx.timer.every(BLINK_MS, flick("blink", 170, () => !this.roar));
+    this.howl = null; // the step of the dragon's roar in progress (see DRAGON_ROAR), else null
+    this.howls = 0; // how many it has started, so each one's rings of sound are new elements
+    cx.timer.every(BLINK_MS, flick("blink", 170, () => !this.roar && !this.howl));
     cx.timer.every(ROAR_MS, flick("roar", 1100, () => this.monster.kind === "ogre"));
+    // The dragon's roar is one render per step, each timed by the one before;
+    // nothing renders between roars or while the monster is something else.
+    const howl = (i) => (cx) => {
+      this.howl = DRAGON_ROAR[i]?.[0] ?? null;
+      cx.notify();
+      if (this.howl) cx.timer.after(DRAGON_ROAR[i][1], howl(i + 1));
+    };
+    cx.timer.every(DRAGON_ROAR_MS, (cx) => {
+      if (!this.fighting || !(this.monster?.hp > 0) || this.monster.kind !== "dragon" || this.howl) return;
+      this.howls += 1;
+      howl(0)(cx);
+    });
     cx.timer.every(WATCH_MS, (cx) => {
       // nothing happens while the scene is too narrow to show the fight
       if (!this.battle || Math.max(320, this.size.width) < 640) return;
@@ -411,6 +437,22 @@ export default class RaidParty extends View {
   // the name, one of FRAMES in rules.js: "" standing, "-walk-l", "-f-r" and so on.
   look(cls, frame = "", colour = equipped(this.progress, cls, "armour")) {
     return `${ART}/${lookArt(cls, colour)}${frame}.png`;
+  }
+
+  // One of class `cls`'s pictures as an element `w` by `h`, wherever a class
+  // is drawn: the picture (see look) with the hat the class has on, or `hat`
+  // (the shop's previews), laid over it at the same size and place. The hat's
+  // picture is the same canvas as the frame under it, so there is nothing to
+  // line up. No hat, no overlay.
+  sprite(cls, frame, w, h, colour = equipped(this.progress, cls, "armour"), hat = equipped(this.progress, cls, "hat")) {
+    const top = hatArt(cls, hat);
+    return div()
+      .relative()
+      .flex_none()
+      .w(w)
+      .h(h)
+      .child(image(this.look(cls, frame, colour)).w(w).h(h))
+      .when(Boolean(top), (el) => el.child(div().absolute().left(0).top(0).child(image(`${ART}/${top}${frame}.png`).w(w).h(h))));
   }
 
   // Starts the attack clock if it is stopped and anyone is ready to attack.
@@ -578,7 +620,31 @@ export default class RaidParty extends View {
     const dead = m.hp <= 0;
     const hurt = hits > 0 && !dead;
     const roaring = m.kind === "ogre" && this.roar;
-    const lids = this.blink && !dead && !roaring;
+    const howl = m.kind === "dragon" && !dead ? this.howl : null; // the dragon's roar: "rear" | "roar" | "settle"
+    const lids = this.blink && !dead && !roaring && !howl;
+    // Rings of sound leave the dragon's mouth one after another as the roar
+    // starts. Each is drawn from the wind-up on, unseen at the mouth, so the
+    // roar's render has something to glide: out to the left as it fades in,
+    // then out again by an inner fade (the two opacities multiply).
+    const ring = (i) => {
+      const on = howl !== "rear";
+      const delay = i * 180;
+      return div()
+        .id(`idle-rpg-roar-wave-${this.howls}-${i}`)
+        .absolute()
+        .left(on ? -150 : -20)
+        .top(74)
+        .opacity(on ? 1 : 0)
+        .transition("opacity", { duration: 120, delay, easing: "ease-out" })
+        .transition("left", { duration: 800, delay, easing: "linear" })
+        .child(
+          div()
+            .id(`idle-rpg-roar-fade-${this.howls}-${i}`)
+            .opacity(on ? 0 : 1)
+            .transition("opacity", { duration: 450, delay: delay + 300, easing: "ease-in" })
+            .child(image(`${ART}/roar-wave.png`).w(28).h(56)),
+        );
+    };
     // one piece of the monster's art, laid over the whole picture's box
     const layer = (part) =>
       div()
@@ -606,12 +672,16 @@ export default class RaidParty extends View {
             // nothing ever shows through: the slime's dome sinks into its foot
             // and rises, the dragon's tail sways behind its body, and the ogre
             // and dragon breathe with their upper body while the feet stay
-            // planted. The ogre now and then roars, and all blink.
+            // planted. The ogre and dragon now and then roar (the dragon's
+            // whole picture swaps for its wind-up and roar, with only the
+            // roaring upper body shaking over it), and all blink.
             .top(this.struck && hurt ? -4 : 0)
             .transition("top", { duration: 90, easing: "ease-out" })
             .when(m.kind === "dragon", (el) => el.child(layer("tail").loop("top", { from: 0, to: 5, period: 2600 })))
-            .child(layer(roaring ? "2" : m.kind === "slime" ? "base" : m.kind === "dragon" ? "body" : null))
-            .when(!roaring, (el) =>
+            .child(layer(roaring ? "2" : m.kind === "slime" ? "base" : m.kind === "dragon" ? (howl === "roar" ? "roar" : howl ? "rear" : "body") : null))
+            .when(howl === "roar", (el) => el.child(layer("roar-top").loop("left", { from: -2, to: 2, period: 140, easing: "linear" })))
+            .when(Boolean(howl), (el) => el.children([0, 1, 2].map(ring)))
+            .when(!roaring && !howl, (el) =>
               el.child(
                 layer("top")
                   .loop("top", m.kind === "slime" ? { from: 0, to: 8, period: 1700 } : { from: 0, to: -3, period: m.kind === "dragon" ? 3200 : 2600 })
@@ -826,8 +896,8 @@ export default class RaidParty extends View {
     const phase = this.phaseOf(a.address);
     const frame = !fighting || !(this.monster?.hp > 0) ? "f" : phase === 1 ? "a1" : phase === 2 || phase === 3 ? "a2" : "f";
     const pose = this.fighting
-      ? div().relative().w(72).h(72).child(div().absolute().left(dir > 0 ? 0 : -24).top(0).child(image(this.look(c, `-${frame}-${dir > 0 ? "r" : "l"}`)).w(96).h(72)))
-      : image(this.look(c)).w(72).h(72);
+      ? div().relative().w(72).h(72).child(div().absolute().left(dir > 0 ? 0 : -24).top(0).child(this.sprite(c, `-${frame}-${dir > 0 ? "r" : "l"}`, 96, 72)))
+      : this.sprite(c, "", 72, 72);
     const where = `${a.space_name} · ${a.tab_name}`;
     const open = this.card === a.address;
     return [
@@ -983,7 +1053,7 @@ export default class RaidParty extends View {
       .absolute()
       .left(d.x - 44)
       .top(d.y - 78)
-      .child(image(this.look(c, `-rag-${tilt}`)).w(88).h(88));
+      .child(this.sprite(c, `-rag-${tilt}`, 88, 88));
   }
 
   you_() {
@@ -1020,15 +1090,9 @@ export default class RaidParty extends View {
                   .absolute()
                   .left(this.youDir > 0 ? 0 : -24)
                   .top(0)
-                  .child(
-                    image(
-                      this.look(c, `-${!this.youFights ? "f" : [0, "a1", "a2", "a2", 0][this.phaseOf(YOU)] || "f"}-${this.youDir > 0 ? "r" : "l"}`),
-                    )
-                      .w(96)
-                      .h(72),
-                  ),
+                  .child(this.sprite(c, `-${!this.youFights ? "f" : [0, "a1", "a2", "a2", 0][this.phaseOf(YOU)] || "f"}-${this.youDir > 0 ? "r" : "l"}`, 96, 72)),
               )
-          : image(this.look(c, this.walking ? (this.step ? "-walk-r" : "-walk-l") : "")).w(72).h(72),
+          : this.sprite(c, this.walking ? (this.step ? "-walk-r" : "-walk-l") : "", 72, 72),
       )
       .child(div().px(6).rounded(7).bg(this.card === YOU ? "#00000080" : "#00000040").text_size(10).font_semibold().text_color(CREAM).child("You"));
   }
@@ -1088,7 +1152,7 @@ export default class RaidParty extends View {
               this.save();
               cx.notify();
             })
-            .child(image(this.look(c)).w(36).h(36))
+            .child(this.sprite(c, "", 36, 36))
             .child(div().text_size(9).font_semibold().text_color(GOLD).child(`Lv ${classLevel(this.progress.xp[c]).level}`)),
         ),
       );
@@ -1107,8 +1171,15 @@ export default class RaidParty extends View {
       .bg("#22395a")
       .border(1)
       .border_color("#31506f")
-      // the sprite at 6px a pixel, shifted so the head fills the frame
-      .child(div().absolute().left(-26).top(-10).child(image(this.look(this.sprites[key])).w(108).h(108)))
+      // the sprite at 6px a pixel, shifted so the head fills the frame (a
+      // pixel lower in a hat, whose top can reach the picture's first row)
+      .child(
+        div()
+          .absolute()
+          .left(-26)
+          .top(hatArt(this.sprites[key], equipped(this.progress, this.sprites[key], "hat")) ? -4 : -10)
+          .child(this.sprite(this.sprites[key], "", 108, 108)),
+      )
       .child(
         div()
           .id("idle-rpg-card-wrench")
@@ -1917,7 +1988,7 @@ export default class RaidParty extends View {
           this.skillsOpen = c;
           cx.notify();
         })
-        .child(image(this.look(c)).w(24).h(24))
+        .child(this.sprite(c, "", 24, 24))
         .child(
           h_flex()
             .gap(3)
@@ -1988,19 +2059,22 @@ export default class RaidParty extends View {
   }
 
   // The shop, under the sign like the skills panel: your gold, the four
-  // classes to pick from (each in the colourway it has on), then for the one
-  // picked, everything of one kind the shop sells: a preview of the sprite in
-  // it, its name, and "Equipped", an Equip button (owned) or a Buy button with
-  // its price, dimmed and dead while the gold is short. Buying puts it on as
-  // well; buying and equipping save straight away. Down its left side are the
-  // kinds of item (SHOP in rules.js): armours, weapons, hats, with room under
-  // them for more. A kind with nothing for sale yet says so. Short enough for
-  // the scene at its lowest (230px, the sign taking 54).
+  // classes to pick from (each in the colourway and hat it has on), then for
+  // the one picked, everything of one kind the shop sells: a preview of the
+  // sprite in it, its name, and "Equipped", an Equip button (owned) or a Buy
+  // button with its price, dimmed and dead while the gold is short. Buying
+  // puts it on as well; buying and equipping save straight away. Down its left
+  // side are the kinds of item (SHOP in rules.js): armours, weapons, hats, with
+  // room under them for more. A hat is bought once for every class, which the
+  // panel says under them while hats are shown; each class still has its own
+  // on. A kind with nothing for sale yet says so. Short enough for the scene
+  // at its lowest (230px, the sign taking 54).
   shopCard(left) {
     const cls = this.shopOpen;
     const kind = SHOP_KINDS.includes(this.shopKind) ? this.shopKind : SHOP_KINDS[0];
     const items = catalogue(cls, kind);
-    const preview = { armour: (it) => image(this.look(cls, "", it.id)).w(36).h(36) };
+    // each armour with the class's hat on, each hat over the class's armour
+    const preview = { armour: (it) => this.sprite(cls, "", 36, 36, it.id), hat: (it) => this.sprite(cls, "", 36, 36, undefined, it.id) };
     const nav = (k) =>
       h_flex()
         .id(`idle-rpg-shop-kind-${k}`)
@@ -2112,7 +2186,8 @@ export default class RaidParty extends View {
               .flex_none()
               .gap(3)
               .children(SHOP_KINDS.map(nav))
-              .child(div().px(4).pt(2).text_size(9).text_color("#8ea3bb").child("More soon")),
+              // under the hats, in place of "More soon": what one costs buys it for everyone
+              .child(div().px(4).pt(2).text_size(9).text_color(SHOP[kind].shared ? GOLD : "#8ea3bb").child(SHOP[kind].shared ? "Bought once, for every class" : "More soon")),
           )
           .child(
             v_flex()
@@ -2128,7 +2203,7 @@ export default class RaidParty extends View {
                         `idle-rpg-shop-${c}`,
                         c === cls,
                         () => (this.shopOpen = c),
-                        image(this.look(c)).w(24).h(24),
+                        this.sprite(c, "", 24, 24),
                         div().text_size(9).font_semibold().text_color(CREAM).child(capital(c)),
                       ),
                     ),

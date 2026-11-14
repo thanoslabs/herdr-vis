@@ -51,14 +51,17 @@ jobs:
           out="$(mktemp -d)"
           python3 tools/idle-rpg-sprites.py "$out" > /dev/null
           diff <(ls "$out") <(ls idle-rpg/mods/idle-rpg/art) || { echo "art/ and the generator disagree: regenerate it"; exit 1; }
-          # and every picture the rules can ask for is there
+          # and every picture the rules can ask for is there: each class in each
+          # colourway, and each hat's overlay for each class (no hat, no overlay)
           node --input-type=module <<'EOF'
           import { existsSync } from "node:fs";
-          import { CLASSES, FRAMES, GLYPHS, GLYPH_COLOURS, catalogue, glyphArt, lookArt } from "./idle-rpg/mods/idle-rpg/rules.js";
+          import { CLASSES, FRAMES, GLYPHS, GLYPH_COLOURS, catalogue, glyphArt, hatArt, lookArt } from "./idle-rpg/mods/idle-rpg/rules.js";
+          const art = (name) => FRAMES.map((f) => `idle-rpg/mods/idle-rpg/art/${name}${f}.png`);
           const missing = [
-            ...CLASSES.flatMap((c) =>
-              catalogue(c, "armour").flatMap((it) => FRAMES.map((f) => `idle-rpg/mods/idle-rpg/art/${lookArt(c, it.id)}${f}.png`)),
-            ),
+            ...CLASSES.flatMap((c) => [
+              ...catalogue(c, "armour").flatMap((it) => art(lookArt(c, it.id))),
+              ...catalogue(c, "hat").flatMap((it) => (hatArt(c, it.id) ? art(hatArt(c, it.id)) : [])),
+            ]),
             // the pixel font: every character in every colour
             ...GLYPH_COLOURS.flatMap((c) => [...GLYPHS].map((ch) => `idle-rpg/mods/idle-rpg/art/${glyphArt(c, ch)}.png`)),
           ].filter((p) => !existsSync(p));
