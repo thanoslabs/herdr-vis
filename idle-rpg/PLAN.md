@@ -1,6 +1,6 @@
 # Idle RPG: plan
 
-Planning notes for growing this layout from a visualizer with a battle mode into an idle RPG. Steps 1 to 3 of the proposed order (bookkeeping, experience, and class skills with per-attacker cadence) are built, and the colours and hats of step 4 (a shop selling colourways and hats); the rest is not. "Decided" items come from the repo owner; "Default" items were chosen while building and are constants in `mods/idle-rpg/rules.js`, easy to retune; "Proposed" items are suggestions that still need a yes.
+Planning notes for growing this layout from a visualizer with a battle mode into an idle RPG. Steps 1 to 3 of the proposed order (bookkeeping, experience, and class skills with per-attacker cadence) are built, and the colours, hats and weapons of step 4 (a shop selling colourways, hats and weapons; weapons as looks only, their effects still to decide); the rest is not. "Decided" items come from the repo owner; "Default" items were chosen while building and are constants in `mods/idle-rpg/rules.js`, easy to retune; "Proposed" items are suggestions that still need a yes.
 
 ## Principles
 
@@ -51,7 +51,7 @@ Planning notes for growing this layout from a visualizer with a battle mode into
 
 ### Customisation shop
 
-- **Decided:** colours first, then hats and alternate sprites. **Colours built**, sold as "Armours": a shop opened from the gold on the sign, with the kinds of item down its left side (Armours, Weapons, Hats, and room for more). **Owner's decision:** the shop is laid out by category this way because much more is planned for it. **Hats built** (below). Weapons and alternate sprites are **not built**: the Weapons category is there and empty.
+- **Decided:** colours first, then hats and alternate sprites. **Colours built**, sold as "Armours": a shop opened from the gold on the sign, with the kinds of item down its left side (Armours, Weapons, Hats, and room for more). **Owner's decision:** the shop is laid out by category this way because much more is planned for it. **Hats built** (below). **Weapons built** as looks (below): bought, worn and seen, with no effect on the fight yet. Alternate sprites are **not built**.
 - Default: a look belongs to a class, not to an agent (agents are short-lived and forgotten after a week). Every character with that class on, agents and the player alike, wears the colourway the class has equipped.
 - Default: each class has its default colourway (free, always owned) and three more to buy, priced 5, 10 and 20 gold (`COLOUR_PRICES`). Buying is permanent; an owned colourway can be equipped and swapped freely at no cost. No refunds, no selling.
 - Default: buying a colourway also puts it on (one click; the default or any other owned one is a free click away).
@@ -69,6 +69,22 @@ Planning notes for growing this layout from a visualizer with a battle mode into
 - Default: hats are drawn as overlay layers: for each hat, class and picture, a see-through PNG the size of the picture it lies on (`art/hats/<id>/<class>/<frame>.png`), so the mod lays one image over the other with no anchor sums. The generator pushes each hat through the same canvas, lean, shear and mirror as the body, so it follows the head when walking and dangling, and in the healer's mirrored fighting poses.
 - Default: each hat is drawn per class, because every head sits in its own place and three classes wear their own headgear: it covers the wizard's hat entirely, sits over the warrior's plume and the archer's cap and feather, and replaces the top of the healer's hood. The party and Santa hats leave the face showing; the jack-o'-lantern is a helmet over the whole head, with a carved face.
 - Default: the shop's Hats tab shows the chosen class wearing each hat over the armour it has on, says "Bought once, for every class" under the kinds, and the armour previews show the class's hat too.
+
+#### Weapons
+
+- **Owner's request:** variety in the weapons the shop sells: for warriors different swords, hammers and axes; for mages wands and staffs of different elements; for archers bows and crossbows, maybe arrows carrying different elements; for clerics (the healer) different potions, as buffs to the raid party or debuffs to the boss.
+- **Decided:** weapons first, in two iterations: this one makes weapons you can buy, wear and see, with no gameplay effect; elemental damage, weaknesses, buffs and debuffs come in the next, once the owner has decided how they should work. **This iteration built.**
+- Default: weapons are each class's own, like armours: owned and held per class (`looks.<class>.weapon`), and ids repeat across classes (the warrior's `flame` is not the archer's). Every character with a class on holds the weapon the class has equipped. Buying also puts it on; the others are a free click away.
+- Default: each class's first weapon is the one it always had (free, always owned, drawn exactly as before), and three more cost 15, 30 and 50 gold (`WEAPON_PRICES`).
+- Default catalogue (`WEAPON_NAMES` in `rules.js`), chosen while building; names are cut to fit the shop's 51px tiles:
+  - Warrior: Sword (`default`), War Axe (`axe`), Hammer (`hammer`), Fire Blade (`flame`, fire).
+  - Wizard: Fire Staff (`default`, fire: its staff and fireball), Ice Wand (`frost`, frost), Bolt Staff (`storm`, storm), Toxic Rod (`venom`, poison).
+  - Archer: Longbow (`default`), Crossbow (`crossbow`), Fire Bow (`flame`, fire arrows), Ice Bow (`frost`, frost arrows).
+  - Healer: its "weapon" is the potion it throws (it keeps its staff): Heal Vial (`default`, potion `heal`, green), Haste Vial (`haste`, yellow), Might Vial (`might`, red), Hex Vial (`hex`, purple).
+- Default: every weapon carries `{ id, name, price, element }`, `element` one of `null`, `fire`, `frost`, `storm`, `poison` (`ELEMENTS`), and the healer's a `potion` tag (`POTIONS`: heal, haste, might, hex), for the next iteration's effects to hang on. They do nothing yet, and the shop says nothing about effects.
+- Default: a weapon is a layer of its own, like a hat: for each class, weapon and picture a see-through PNG the size of the picture it lies on (`weapons/<class>/<weapon>/<frame>.png`), drawn over the body and under the hat; the body pictures are drawn without the weapon. The healer's layer is the potion it holds up as it winds up, so it has only those two pictures. The outline is split so the default weapon over the body is the old picture pixel for pixel. A weapon keeps its own colours whatever the armour (before, the warrior's blade and the wizard's orb took the armour's colours).
+- Default: each weapon's attack looks like it (`attackArt`): the wizard's spell and its burst by element (fireball, ice shard, lightning bolt, venom glob), fire and frost arrows and a crossbow bolt, each potion and its splash in its colour, and the warrior's slash broad for the axe, a crunch for the hammer and orange for the Fire Blade.
+- Default: the shop's Weapons tab shows the class winding up with each weapon (where every weapon, and the healer's potion, shows best), in the armour and hat it has on; the armour and hat previews hold the class's weapon.
 
 ### Kill counts
 
@@ -93,6 +109,10 @@ Planning notes for growing this layout from a visualizer with a battle mode into
 - Does the healer start healing the party instead of (or as well as) throwing potions at the monster?
 - Does the player take damage, and can they dodge by walking away?
 
+### Weapon effects (the next iteration)
+
+- **Not decided:** what weapons do. The owner's ideas: elemental damage (and monsters weak or resistant to elements), arrows carrying elements, and the healer's potions as buffs to the raid party or debuffs to the monster. Open: whether a weapon changes damage, speed or crits, how elements meet monsters, how long a buff or debuff lasts and whether it stacks, and how any of it is shown. The catalogue's `element` and `potion` fields are there for it.
+
 ### Gold and customisation
 
 - (Rounding when monster HP is not a multiple of 100 now has a default: round down. See Decided.)
@@ -113,13 +133,13 @@ Planning notes for growing this layout from a visualizer with a battle mode into
 
 ## Technical notes
 
-- **State today** (`idle-rpg.state` in Herdr's shared state, version 4): `version`, `you`, `spots`, `sprites`, `seen`, `battle`, `monster` (with `maxHp`), `slain`, `gold`, `kills` per monster kind, `xp` for `you` and each class (total XP only; levels are derived), `skills`: ranks per class (points left are derived), `looks`: per class and kind of item, the ids owned and the one equipped (`{ armour: { owned, equipped }, weapon: { owned, equipped }, hat: { equipped } }`), `hats`: the hats bought, owned by every class, and `settings` (`{ damageNumbers }`, booleans). Version 1 state loads with every rank at 0; ranks that claim more points than a class has earned reset that class. Version 1 and 2 state loads with every class owning and wearing only its default colourway; versions 1 to 3 load with no hats owned and none on; unknown or repeated ids are dropped and an equipped id that is not owned falls back to the default. Version 1 to 3 state loads with every setting at its default; unknown settings are dropped and one that is not a boolean gets its default. Each attacker's rhythm is in memory only. `loadState` in `rules.js` reads older state and malformed values without throwing. See `RECIPE.md`.
+- **State today** (`idle-rpg.state` in Herdr's shared state, version 5): `version`, `you`, `spots`, `sprites`, `seen`, `battle`, `monster` (with `maxHp`), `slain`, `gold`, `kills` per monster kind, `xp` for `you` and each class (total XP only; levels are derived), `skills`: ranks per class (points left are derived), `looks`: per class and kind of item, the ids owned and the one equipped (`{ armour: { owned, equipped }, weapon: { owned, equipped }, hat: { equipped } }`), `hats`: the hats bought, owned by every class, and `settings` (`{ damageNumbers }`, booleans). Version 1 state loads with every rank at 0; ranks that claim more points than a class has earned reset that class. Version 1 and 2 state loads with every class owning and wearing only its default colourway; versions 1 to 3 load with no hats owned and none on; versions 1 to 4 load with every class owning and holding only its default weapon, whatever they say (version 5 was the bump for weapons, so an older copy of the mod treats a save with weapons as read-only rather than dropping them); unknown or repeated ids are dropped and an equipped id that is not owned falls back to the default. Version 1 to 3 state loads with every setting at its default; unknown settings are dropped and one that is not a boolean gets its default. Each attacker's rhythm is in memory only. `loadState` in `rules.js` reads older state and malformed values without throwing. See `RECIPE.md`.
 - **Saving (decided):** combat progress (monster HP, XP) is saved only when a monster is slain and when the next one spawns, not as damage lands: setting a shared value re-renders every mod in the window, and Power and Haste would make damage-based saves frequent. HP and XP earned since the last kill are lost if the app closes mid-fight. Deliberate actions save at once: spending or resetting points, buying or equipping in the shop, changing a setting, changing a class, the raid toggle, moving yourself or an agent, a newcomer getting a class.
-- **State still to add:** weapons and alternate sprites, as more kinds under `looks`.
+- **State still to add:** alternate sprites, as another kind under `looks`.
 - **Existing kill total** cannot be split by monster kind after the fact. It is kept as the total and the per-kind counts start from zero.
 - **Per-attacker cadence** replaced the single 3-second beat: each attacker keeps its own rhythm on one 250ms clock that runs only while someone is attacking and re-renders only while someone is mid-attack. **Built.**
 - **Stronger attacks:** `fight()` takes a list of blows, each with its own damage.
-- **Customisation art** is the costly part. Every character is drawn in a standing sprite, walk frames, dangling frames and three fighting poses in two directions: twelve pictures. Colours are generated by swapping palette entries in `tools/idle-rpg-sprites.py` (**built**: 3 colourways × 4 classes × 12 pictures, 144 more files, about 98 KB). Hats are drawn as a separate layer over each picture (**built**: 3 hats × 4 classes × 12 pictures, 144 more files, about 54 KB), so they do not multiply with colourways.
+- **Customisation art** is the costly part. Every character is drawn in a standing sprite, walk frames, dangling frames and three fighting poses in two directions: twelve pictures. Colours are generated by swapping palette entries in `tools/idle-rpg-sprites.py` (**built**: 3 colourways × 4 classes × 12 pictures, 144 more files, about 98 KB). Hats are drawn as a separate layer over each picture (**built**: 3 hats × 4 classes × 12 pictures, 144 more files, about 54 KB), so they do not multiply with colourways. So are weapons (**built**: 4 weapons × 3 classes × 12 pictures and the healer's 4 potions × 2, 152 files), with 29 more attack pictures.
 - **`main.js` is one class of about 2,100 lines.** A Herdr mod may import other files in its folder (`./rules.js`; Herdr's own `win98` mod does), so the game rules (experience, levels, skill points and what ranks give, attack gaps, the crit roll, monster HP, gold, kill counts, loading state) live in `rules.js` as plain functions, and `main.js` draws and runs the timers.
 - **Progress only accrues while the layout is shown**, since the timers live in the mod. Whether that is acceptable for an idle game is worth a decision.
 
@@ -128,7 +148,9 @@ Planning notes for growing this layout from a visualizer with a battle mode into
 1. State and bookkeeping: versioned state, kills per monster kind, gold on a kill, shown on the sign. **Built.**
 2. Experience: player and class experience and levels, shown on the info cards. No unlocks yet. **Built** (levels also on the class picker, and a note over the head on a level-up).
 3. Class unlocks: stronger and faster attacks, then buffs. Needs per-attacker cadence. **Built** as per-class skill points (Power, Haste, Crit), with per-attacker cadence and monster HP by kind; buffs not built.
-4. Customisation shop: colours first (cheap to generate), then hats and alternate sprites. **Colours built** (a shop under the sign, colourways per class) and **hats built** (bought once for every class, worn per class); alternate sprites not built.
+4. Customisation shop: colours first (cheap to generate), then hats and alternate sprites. **Colours built** (a shop under the sign, colourways per class), **hats built** (bought once for every class, worn per class) and **weapons built** as looks (per class; their effects are the next iteration, not decided); alternate sprites not built.
 5. Monsters fighting back, once its design questions are answered.
 
 Parked beyond this: what player levels unlock, maps, resources other than gold.
+
+**Idea from the owner, not started:** seasonal decorations in town: jack-o'-lanterns in October for Halloween, and string lights and a Christmas tree in December. To decide first: whether they follow the calendar, a setting in the gear menu, or both.

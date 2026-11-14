@@ -56,12 +56,14 @@ jobs:
           diff <(cd "$out" && find . -type d | LC_ALL=C sort) <(cd idle-rpg/mods/idle-rpg/art && find . -type d | LC_ALL=C sort) \
             || { echo "art/ has folders the generator does not write"; exit 1; }
           # and every picture the rules can ask for is there: each class in each
-          # colourway, each hat's overlay for each class (no hat, no overlay), every
-          # monster's pictures and every character of the pixel font, each in every
-          # picture it has; plus every picture main.js names outright
+          # colourway, each weapon's layer for its class in every picture it has
+          # and its attack's pictures facing each way, each hat's overlay for each
+          # class (no hat, no overlay), every monster's pictures and every character
+          # of the pixel font, each in every picture it has; plus every picture
+          # main.js names outright
           node --input-type=module <<'EOF'
           import { existsSync, readFileSync } from "node:fs";
-          import { CLASSES, FRAMES, GLYPHS, GLYPH_COLOURS, KINDS, MONSTER_ART, catalogue, glyphArt, hatArt, lookArt, monsterArt } from "./idle-rpg/mods/idle-rpg/rules.js";
+          import { ATTACK_PARTS, CLASSES, FRAMES, GLYPHS, GLYPH_COLOURS, KINDS, MONSTER_ART, WEAPON_FRAMES, attackArt, catalogue, glyphArt, hatArt, lookArt, monsterArt, weaponArt } from "./idle-rpg/mods/idle-rpg/rules.js";
           const dir = "idle-rpg/mods/idle-rpg";
           const unknown = KINDS.filter((k) => !MONSTER_ART[k]);
           if (unknown.length) {
@@ -71,6 +73,12 @@ jobs:
           const paths = [
             ...CLASSES.flatMap((c) => [
               ...catalogue(c, "armour").flatMap((it) => FRAMES.map((f) => lookArt(c, it.id, f))),
+              // a weapon's own pictures (never its class's default standing in for it), and
+              // its attack's (the warrior's slash is its own hit, so it has no "hit")
+              ...catalogue(c, "weapon").flatMap((it) => [
+                ...WEAPON_FRAMES[c].map((f) => (weaponArt(c, it.id, f)?.startsWith(`weapons/${c}/${it.id}/`) ? weaponArt(c, it.id, f) : null)),
+                ...ATTACK_PARTS.flatMap((part) => (c === "warrior" && part === "hit" ? [] : ["l", "r"].map((side) => attackArt(c, it.id, part, side)))),
+              ]),
               ...catalogue(c, "hat").flatMap((it) => (hatArt(c, it.id) ? FRAMES.map((f) => hatArt(c, it.id, f)) : [])),
             ]),
             ...KINDS.flatMap((k) => MONSTER_ART[k].map((part) => monsterArt(k, part))),

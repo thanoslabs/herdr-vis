@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # Draws Idle RPG's pixel art as PNGs (no dependencies): the class sprites
 # (stubby 16x16 adventurers with a one-pixel dark outline, in every colourway
-# the shop sells, and every hat it sells drawn to lay over them), the castle
+# the shop sells, and every weapon and hat it sells drawn to lay over them),
+# each weapon's attack, the castle
 # scenery (wall, floor, mountains, clouds, sun, moon, stars, props), the icons,
 # and a small pixel font for numbers.
 #
@@ -16,9 +17,13 @@
 #               cloud-a, cloud-b, banner, torch, barrel
 #   classes/    <class>/<look>/stand, walk/{l,r}, rag/{c,l,r}, and the fighting
 #               poses stance/, windup/, strike/ {l,r}; <look> is "default" or a
-#               colourway's id
+#               colourway's id; drawn without the weapon
+#   weapons/    <class>/<weapon>/ the same pictures as a class (the healer's: only
+#               windup/), to lay over them; <weapon> is "default" or the weapon's id
 #   hats/       <hat>/<class>/ the same pictures as a class, to lay over them
-#   attacks/    arrow/, fireball/, slash/ {l,r}; burst, potion, splash
+#   attacks/    by what flies or lands, then the weapon's variant of it:
+#               slash/<variant>/, arrow/<variant>/, spell/<element>/ {l,r};
+#               burst/<element>, potion/<potion>, splash/<potion>, spark/<element>
 #   monsters/   <kind>/ idle (the whole picture), blink, the pieces that move
 #               (top, base, body, tail), and roar/ for the ogre and dragon
 #   stations/   <station>/{idle,hot}, and the arrow over the one under the pointer
@@ -42,23 +47,26 @@ def write(name, data):
         f.write(data)
 OUTLINE = "#141a26"
 COMMON = {"s": "#f2c9a0", "k": "#1b2233"}
+# Each class without its weapon (a layer of its own: see Weapons, below), hands
+# and all. The healer's staff stays here: the healer's "weapon" is the potion it
+# throws.
 SPR = {
-"wizard": ({"h":"#5a3dab","y":"#f2c14e","g":"#f2c14e","c":"#8fe3ff","C":"#ffffff","w":"#8a5a2b","b":"#f4f7fb","r":"#6b4bc4","R":"#5a3dab","d":"#3d2a80"}, [
+"wizard": ({"h":"#5a3dab","y":"#f2c14e","g":"#f2c14e","b":"#f4f7fb","r":"#6b4bc4","R":"#5a3dab","d":"#3d2a80"}, [
 "................",
 ".......hh.......",
-"......hhhh...c..",
-"......hyhh..cCc.",
-".....gggggg..c..",
-"....hhhhhhhh.w..",
-".....ssssss..w..",
-".....skssks..w..",
-".....bssssb..w..",
-".....bbbbbb..w..",
-"....rrbbbbrr.w..",
-"...srrrbbrrrsw..",
-"....rrrRRrrr.w..",
-"....gggggggg.w..",
-".....dd..dd..w..",
+"......hhhh......",
+"......hyhh......",
+".....gggggg.....",
+"....hhhhhhhh....",
+".....ssssss.....",
+".....skssks.....",
+".....bssssb.....",
+".....bbbbbb.....",
+"....rrbbbbrr....",
+"...srrrbbrrrs...",
+"....rrrRRrrr....",
+"....gggggggg....",
+".....dd..dd.....",
 "................",
 ]),
 "healer": ({"t":"#2fae8e","h":"#e6dfcc","y":"#f3cf6b","g":"#f2c14e","m":"#7df0c0","w":"#c9a66b","r":"#f6f1e2","d":"#8a6f47"}, [
@@ -82,17 +90,17 @@ SPR = {
 "warrior": ({"p":"#c94040","a":"#9aa7b8","A":"#dfe6ee","u":"#3a6fc4","g":"#f2c14e","d":"#7a5230","b":"#5b6675"}, [
 "................",
 ".......pp.......",
-"......ppp....A..",
-".....aaaaaa..A..",
-"....aaAAAAaa.A..",
-"....aaaaaaaa.A..",
-"....askaaksa.A..",
-"....assssssa.A..",
-".....ssssss..A..",
-"....AaaaaaaA.A..",
-".uuuuaaaaaap.A..",
-".ugguaaaaaapggg.",
-".ugguddgdddpsd..",
+"......ppp.......",
+".....aaaaaa.....",
+"....aaAAAAaa....",
+"....aaaaaaaa....",
+"....askaaksa....",
+"....assssssa....",
+".....ssssss.....",
+"....AaaaaaaA....",
+".uuuuaaaaaap....",
+".ugguaaaaaap....",
+".ugguddgdddps...",
 ".uuuuaa..aap....",
 ".....bb..bb.....",
 "................",
@@ -103,16 +111,16 @@ SPR = {
 ".....ppnnnn.....",
 ".....nnnnnnn....",
 "...NNNNNNNNN....",
-"....ddssssddd...",
-"....dskssksdcd..",
-"....dssssssdcd..",
-".....ssssss.c.d.",
-".cc..nnnnnn.c.d.",
-".qq.nndnnnnns.d.",
-".qqsnnndnnnnc.d.",
-".qq.ddddgdddcd..",
-"....NNNNNNNNcd..",
-".....dd..dd.d...",
+"....ddssssdd....",
+"....dskssksd....",
+"....dssssssd....",
+".....ssssss.....",
+".cc..nnnnnn.....",
+".qq.nndnnnnns...",
+".qqsnnndnnnn....",
+".qq.ddddgddd....",
+"....NNNNNNNN....",
+".....dd..dd.....",
 "................",
 ]),
 }
@@ -120,25 +128,25 @@ SPR = {
 # Colourways sold in the shop: each class's default (the palette above, drawn
 # into classes/<class>/default/) and three more, drawn into classes/<class>/<id>/ by swapping
 # palette entries over the default's (clothing, armour, hair, trim; never skin,
-# eyes or the outline). The ids, in this order, must match COLOUR_NAMES in
+# eyes or the outline). A weapon keeps its own colours whatever the armour. The ids, in this order, must match COLOUR_NAMES in
 # mods/idle-rpg/rules.js, which names them (and COLOUR_PRICES prices them).
 LOOKS = {
-"wizard": {   # hat, robe and boots; the beard, staff and gold trim stay
-    "crimson": {"h":"#a8323a","r":"#cf4747","R":"#a8323a","d":"#64202a","c":"#ffcf7a"},
-    "moss":    {"h":"#2f7a46","r":"#45a05f","R":"#2f7a46","d":"#1f4d33","y":"#dfe6ee","g":"#dfe6ee","c":"#c4ff8f"},
-    "frost":   {"h":"#4f86c6","r":"#9fd0f5","R":"#6fa8dc","d":"#35608f","y":"#ffffff","g":"#ffffff","c":"#ffffff","C":"#8fe3ff"},
+"wizard": {   # hat, robe and boots; the beard and gold trim stay
+    "crimson": {"h":"#a8323a","r":"#cf4747","R":"#a8323a","d":"#64202a"},
+    "moss":    {"h":"#2f7a46","r":"#45a05f","R":"#2f7a46","d":"#1f4d33","y":"#dfe6ee","g":"#dfe6ee"},
+    "frost":   {"h":"#4f86c6","r":"#9fd0f5","R":"#6fa8dc","d":"#35608f","y":"#ffffff","g":"#ffffff"},
 },
-"healer": {   # the cross, hood and trim; the robe stays pale so the cross shows
+"healer": {   # the cross, hood, hair and trim; the robe stays pale so the cross shows
     "rose":  {"t":"#d4457c","h":"#a8552e","m":"#ffa8c8","r":"#fbf0f2","d":"#7a3b4f"},
     "sky":   {"t":"#3b78d0","h":"#3b2b22","m":"#a8d8ff","r":"#eef4fb","d":"#3a4e6e"},
     "plum":  {"t":"#8048bf","h":"#f4f0e6","m":"#d8b4ff","r":"#f6f0fb","d":"#4a3366"},
 },
-"warrior": {  # armour (and the blade, which shares its light tone), plume and shield
+"warrior": {  # armour, plume and shield
     "cobalt": {"a":"#4f74b8","A":"#b4cdf0","p":"#f4ecd8","u":"#c94040","b":"#34466e"},
     "jade":   {"a":"#5c9c84","A":"#c4ecdc","p":"#f2c14e","u":"#7a3fa8","b":"#3d5f55"},
     "ruby":   {"a":"#b04a4a","A":"#f4d2cc","p":"#f4ecd8","u":"#2f7a7a","b":"#5b3b3b"},
 },
-"archer": {   # tunic, hat, feather and quiver; the hair, bow and string stay
+"archer": {   # tunic, hat, feather and quiver; the hair stays
     "scarlet": {"n":"#c43a3a","N":"#8a2226","p":"#f2c14e","q":"#5b3b22"},
     "azure":   {"n":"#3f7fcc","N":"#285a96","p":"#f4ecd8"},
     "dusk":    {"n":"#8a56c2","N":"#5e3890","p":"#6fdc9a","q":"#c08a4a"},
@@ -160,11 +168,11 @@ def canvas(rows, size, pad, dx=lambda y: 0):
     return g
 
 def outlined(g):
-    n = len(g)
+    h, w = len(g), len(g[0])
     o = [r[:] for r in g]
-    for y in range(n):
-        for x in range(n):
-            if g[y][x] is None and any(0 <= y+j < n and 0 <= x+i < n and g[y+j][x+i] for i, j in ((1,0),(-1,0),(0,1),(0,-1))):
+    for y in range(h):
+        for x in range(w):
+            if g[y][x] is None and any(0 <= y+j < h and 0 <= x+i < w and g[y+j][x+i] for i, j in ((1,0),(-1,0),(0,1),(0,-1))):
                 o[y][x] = "#"
     return o
 
@@ -189,17 +197,36 @@ def lift(rows, side):
     r[a] = r[a + 1] = "."
     return rows[:14] + ["".join(r)] + rows[15:]
 
-for cls, (base, rows) in SPR.items():
-    assert len(rows) == 16 and all(len(r) == 16 for r in rows), (cls, [len(r) for r in rows])
-    for name, swaps in looks(cls):                              # every colourway, the default first
-        pal = {**COMMON, **base, **swaps, "#": OUTLINE}
-        w = lambda n, g: write(n, png(outlined(g), pal))
-        w(f"{name}/stand.png", canvas(rows, 18, 1))             # 16x16 art, 1px margin for the outline
-        for tag, side in (("l", -1), ("r", 1)):                 # lean a pixel, other foot lifted
-            w(f"{name}/walk/{tag}.png", canvas(lift(rows, side), 18, 1, lambda y: side if y < 14 else 0))
-        w(f"{name}/rag/c.png", canvas(rows, 22, 3))             # dangling: straight, or sheared each way
+def box(rows):
+    # a fighting pose's 22x16 rows on its 24x18 picture, as icon() lays them out
+    g = [[None] * 24 for _ in range(18)]
+    for y, row in enumerate(rows):
+        for x, ch in enumerate(row):
+            if ch != ".": g[y + 1][x + 1] = ch
+    return g
+
+POSES = ("stance", "windup", "strike")
+
+def pictures(rows, posed, tags=POSES):
+    # every picture of a class as (frame, grid): `rows` in the everyday 16x16
+    # grid (None for none of the everyday pictures), `posed(tag)` a pose's
+    # 22-wide rows for each of `tags`. 16x16 art with a 1px margin for the
+    # outline standing; leaning a pixel, the other foot lifted, walking;
+    # straight, or sheared each way, dangling; and each fighting pose drawn
+    # attacking to the right ("r") and its mirror image ("l"). The frames are
+    # FRAMES in mods/idle-rpg/rules.js.
+    out = []
+    if rows is not None:
+        out.append(("stand", canvas(rows, 18, 1)))
         for tag, side in (("l", -1), ("r", 1)):
-            w(f"{name}/rag/{tag}.png", canvas(rows, 22, 3, lambda y: side * round(y * 0.2)))
+            out.append((f"walk/{tag}", canvas(lift(rows, side), 18, 1, lambda y: side if y < 14 else 0)))
+        out.append(("rag/c", canvas(rows, 22, 3)))
+        for tag, side in (("l", -1), ("r", 1)):
+            out.append((f"rag/{tag}", canvas(rows, 22, 3, lambda y: side * round(y * 0.2))))
+    for tag in tags:
+        out.append((f"{tag}/r", box(posed(tag))))
+        out.append((f"{tag}/l", box([r[::-1] for r in posed(tag)])))
+    return out
 
 
 # ---- Scenery ---------------------------------------------------------------
@@ -878,80 +905,165 @@ icon("monsters/dragon/roar/wave.png", [                                 # rings 
     "...ww",
 ], {"w": "#f2c98a"})
 
-# ---- Attacks (battle mode), in attacks/. Those that fly or face a way have a
-# folder: "r" flies or faces right, "l" is its mirror. ----
+# ---- Attacks (battle mode), in attacks/, by what flies or lands, then by
+# the weapon's variant of it (see ATTACK_ART in mods/idle-rpg/rules.js, which
+# picks them for each weapon): the warrior's slash/, the archer's arrow/, the
+# wizard's spell/ and the burst/ where it lands, the healer's potion/ and its
+# splash/, and the spark/ where a fire or frost arrow lands (a plain one's is
+# status/spark). Those that fly or face a way have a folder: "r" flies or faces
+# right, "l" is its mirror. Every variant of one has the same size, so the mod
+# draws them all alike; the first of each is what the class always had. ----
 def both(name, rows, pal):
     icon(f"attacks/{name}/r.png", rows, pal)
     icon(f"attacks/{name}/l.png", [r[::-1] for r in rows], pal)
 
-both("arrow", [
-    "f......A.",
-    "fddddddAA",
-    "f......A.",
-], {"f": "#f4ecd8", "d": "#7a5230", "A": "#dfe6ee"})
-both("fireball", [
-    "...ooo..",
-    ".yooyyo.",
-    "royyWWyo",
-    "royyWWyo",
-    ".yooyyo.",
-    "...ooo..",
-], {"r": "#e2552f", "o": "#ff9d3c", "y": "#ffe27a", "W": "#ffffff"})
-both("slash", [
-    ".WW...",
-    "...WW.",
-    "....WW",
-    "....WW",
-    ".....W",
-    "....WW",
-    "....WW",
-    "...WW.",
-    ".WW...",
-], {"W": "#ffffff"})
-icon("attacks/burst.png", [
-    "....y....",
-    ".y.yoy.y.",
-    "..yoWoy..",
-    ".yoWWWoy.",
-    "yoWWWWWoy",
-    ".yoWWWoy.",
-    "..yoWoy..",
-    ".y.yoy.y.",
-    "....y....",
-], {"o": "#ff9d3c", "y": "#ffe27a", "W": "#ffffff"})
-icon("attacks/potion.png", [
-    ".bbb.",
-    "..w..",
-    ".www.",
-    "wgggw",
-    "wgGgw",
-    "wgggw",
-    ".www.",
-], {"b": "#7a5230", "w": "#dff3ee", "g": "#3fbf8f", "G": "#9af0cf"})
-icon("attacks/splash.png", [
-    "g.........g",
-    "..g..g..g..",
-    ".g.ggGgg.g.",
-    "..gGGGGGg..",
-    ".ggGGGGGgg.",
-    "..ggggggg..",
-], {"g": "#3fbf8f", "G": "#9af0cf"})
+ARROW = {"f": "#f4ecd8", "d": "#7a5230", "A": "#dfe6ee"}
+for name, rows, pal in [
+    ("default", ["f......A.", "fddddddAA", "f......A."], ARROW),
+    ("fire", ["f....r.o.", "fdddddyoW", "f....r.o."], {**ARROW, "r": "#e2552f", "o": "#ff9d3c", "y": "#ffe27a", "W": "#fff3b0"}),
+    ("frost", ["f.....bi.", "fddddddiI", "f.....bi."], {**ARROW, "b": "#4f86c6", "i": "#9fd0f5", "I": "#ffffff"}),
+    ("bolt", ["...kk..a.", "...kDDDaA", "...kk..a."], {"k": "#5b6675", "D": "#5a3d22", "a": "#9aa7b8", "A": "#dfe6ee"}),  # the crossbow's: short and heavy
+]:
+    assert len(rows) == 3 and all(len(r) == 9 for r in rows)
+    both(f"arrow/{name}", rows, pal)
+for name, rows, pal in [
+    ("fire", [                                   # a fireball
+        "...ooo..",
+        ".yooyyo.",
+        "royyWWyo",
+        "royyWWyo",
+        ".yooyyo.",
+        "...ooo..",
+    ], {"r": "#e2552f", "o": "#ff9d3c", "y": "#ffe27a", "W": "#ffffff"}),
+    ("frost", [                                  # an ice shard
+        "...bi...",
+        ".bbiiI..",
+        "biiiIIWW",
+        "biiiIIWW",
+        ".bbiiI..",
+        "...bi...",
+    ], {"b": "#4f86c6", "i": "#9fd0f5", "I": "#dff3ff", "W": "#ffffff"}),
+    ("storm", [                                  # a bolt of lightning
+        "........",
+        "..yW...y",
+        ".yWyW.yW",
+        "yW..yWy.",
+        "W....y..",
+        "........",
+    ], {"y": "#ffe27a", "W": "#ffffff"}),
+    ("poison", [                                 # a glob of venom, dripping
+        "...vvv..",
+        ".vvVVvv.",
+        "xvVLLVvv",
+        "xvvVVvvv",
+        ".xvvvvv.",
+        "x..xxx..",
+    ], {"x": "#2f7a22", "v": "#6fcf3f", "V": "#a8eb6a", "L": "#e4ffc4"}),
+]:
+    assert len(rows) == 6 and all(len(r) == 8 for r in rows)
+    both(f"spell/{name}", rows, pal)
+for name, rows, pal in [
+    ("default", [".WW...", "...WW.", "....WW", "....WW", ".....W", "....WW", "....WW", "...WW.", ".WW..."], {"W": "#ffffff"}),
+    ("heavy", ["WWW...", ".wWWW.", "...WWW", "...wWW", "....WW", "...wWW", "...WWW", ".wWWW.", "WWW..."],   # the axe's: a broad cleave
+     {"W": "#ffffff", "w": "#c9d6e6"}),
+    ("smash", ["..W..W", "W..W..", ".W.WW.", "..WyWW", "WWyyyW", "..WyWW", ".W.WW.", "W..W..", "..W..W"],  # the hammer's: a crunch
+     {"W": "#ffffff", "y": "#ffe27a"}),
+    ("flame", [".ry...", "...oy.", "....oy", "....oy", ".....y", "....oy", "....oy", "...oy.", ".ry..."],    # the flame blade's
+     {"r": "#e2552f", "o": "#ff9d3c", "y": "#ffe27a"}),
+]:
+    assert len(rows) == 9 and all(len(r) == 6 for r in rows)
+    both(f"slash/{name}", rows, pal)
+for name, rows, pal in [
+    ("fire", [
+        "....y....",
+        ".y.yoy.y.",
+        "..yoWoy..",
+        ".yoWWWoy.",
+        "yoWWWWWoy",
+        ".yoWWWoy.",
+        "..yoWoy..",
+        ".y.yoy.y.",
+        "....y....",
+    ], {"o": "#ff9d3c", "y": "#ffe27a", "W": "#ffffff"}),
+    ("frost", [                                  # a burst of frost
+        "....I....",
+        ".I..i..I.",
+        "..i.i.i..",
+        "...iIi...",
+        "IiiIWIiiI",
+        "...iIi...",
+        "..i.i.i..",
+        ".I..i..I.",
+        "....I....",
+    ], {"i": "#9fd0f5", "I": "#ffffff", "W": "#ffffff"}),
+    ("storm", [                                  # a crackle
+        "y...W...y",
+        ".y..y..y.",
+        "..yyWyy..",
+        "..yWWWy..",
+        "WyWWWWWyW",
+        "..yWWWy..",
+        "..yyWyy..",
+        ".y..y..y.",
+        "y...W...y",
+    ], {"y": "#ffe27a", "W": "#ffffff"}),
+    ("poison", [                                 # a splat of venom
+        ".v.....v.",
+        "....v....",
+        "..vvVvv..",
+        ".vVVLVVv.",
+        "vvVLLLVvv",
+        ".vVVLVVv.",
+        "..vvVvv..",
+        "....v.x..",
+        ".x.....v.",
+    ], {"x": "#2f7a22", "v": "#6fcf3f", "V": "#a8eb6a", "L": "#e4ffc4"}),
+]:
+    assert len(rows) == 9 and all(len(r) == 9 for r in rows)
+    icon(f"attacks/burst/{name}.png", rows, pal)
+# The healer's potions, thrown, and their splashes, in each potion's colours
+# (the liquid "g" and its shine "G"): heal (what it always threw), haste,
+# might and hex.
+POTION_COLOURS = {
+    "heal": {"g": "#3fbf8f", "G": "#9af0cf"},
+    "haste": {"g": "#e8b030", "G": "#fff0b0"},
+    "might": {"g": "#d63a3a", "G": "#ff9a8a"},
+    "hex": {"g": "#7a3fb8", "G": "#d8b4ff"},
+}
+for name, colours in POTION_COLOURS.items():
+    icon(f"attacks/potion/{name}.png", [
+        ".bbb.",
+        "..w..",
+        ".www.",
+        "wgggw",
+        "wgGgw",
+        "wgggw",
+        ".www.",
+    ], {"b": "#7a5230", "w": "#dff3ee", **colours})
+    icon(f"attacks/splash/{name}.png", [
+        "g.........g",
+        "..g..g..g..",
+        ".g.ggGgg.g.",
+        "..gGGGGGg..",
+        ".ggGGGGGgg.",
+        "..ggggggg..",
+    ], colours)
+# where a fire or frost arrow lands: status/spark (a plain arrow's) in its colours
+for name, pal in (("fire", {"y": "#ff9d3c", "W": "#ffe27a"}), ("frost", {"y": "#9fd0f5", "W": "#ffffff"})):
+    save(f"attacks/spark/{name}.png", chars(["..y..", ".yWy.", "yWWWy", ".yWy.", "..y.."], pal))
 
 # ---- Fighting poses (battle mode), on a 22x16 grid so a weapon can reach out.
 # Drawn attacking to the right: "stance", "windup" and "strike", each a folder
 # in the look's; "r" faces right and "l" is the mirror image, for attacking to
 # the left. Each pose is drawn in every colourway, with the same swaps as the
-# everyday sprite.
-POSED = {}  # (class, tag): the pose's rows, kept for the hats (below)
+# everyday sprite, and like it without the weapon, which each weapon draws in
+# its own rows for the pose (see Weapons, below).
+POSED = {}  # (class, tag): the pose's rows, for the bodies, the weapons and the hats
 
 def pose(cls, tag, rows):
     rows = [r.ljust(22, ".") for r in rows]
     assert len(rows) == 16 and all(len(r) == 22 for r in rows), (cls, tag, [len(r) for r in rows])
     POSED[(cls, tag)] = rows
-    for name, swaps in looks(cls):
-        pal = {**COMMON, **SPR[cls][0], **swaps, "#": OUTLINE}
-        icon(f"{name}/{tag}/r.png", rows, pal)
-        icon(f"{name}/{tag}/l.png", [r[::-1] for r in rows], pal)
 
 def swap(rows, changes):
     rows = list(rows)
@@ -965,54 +1077,183 @@ def dots(rows, pixels):
 
 W = SPR["warrior"][1]
 pose("warrior", "stance", W)
-pose("warrior", "windup", swap(W, {            # sword held high
-    0: ".............A..", 1: ".......pp....A..", 2: "......ppp....A..", 3: ".....aaaaaa..A..",
-    4: "....aaAAAAaa.A..", 5: "....aaaaaaaa.A..", 6: "....askaaksaggg.", 7: "....assssssa.s..",
-    8: ".....ssssss.a...", 9: "....AaaaaaaAa...", 10: ".uuuuaaaaaap....", 11: ".ugguaaaaaap....",
-    12: ".ugguddgdddp....",
+pose("warrior", "windup", swap(W, {            # weapon held high: the hand at the shoulder
+    7: "....assssssa.s", 8: ".....ssssss.a", 9: "....AaaaaaaAa", 12: ".ugguddgdddp",
 }))
 pose("warrior", "strike", swap(W, {            # swung level, at full reach
-    2: "......ppp.......", 3: ".....aaaaaa.....", 4: "....aaAAAAaa....", 5: "....aaaaaaaa....",
-    6: "....askaaksa....", 7: "....assssssa....", 8: ".....ssssss.....", 9: "....AaaaaaaA..g.",
-    10: ".uuuuaaaaaapasgAAAAAAA", 11: ".ugguaaaaaap..g.", 12: ".ugguddgdddp....",
+    10: ".uuuuaaaaaapas", 12: ".ugguddgdddp",
 }))
 
 A = SPR["archer"][1]
-SPR["archer"][0]["A"] = "#dfe6ee"  # arrowhead
-pose("archer", "stance", A)
-pose("archer", "windup", swap(A, {             # bow drawn, arrow nocked
-    5: "....ddssssdd..d.", 6: "....dskssksd..cd", 7: "....dssssssd..cd", 8: ".....ssssss..c..d",
-    9: ".cc..nnnnnn..c..d", 10: ".qq.nndnnnnnsddddA", 11: ".qqsnnndnnnn.c..d", 12: ".qq.ddddgddd.c.d",
-    13: "....NNNNNNNN..cd", 14: ".....dd..dd...d.",
-}))
-pose("archer", "strike", swap(A, {             # loosed
-    5: "....ddssssdd..d.", 6: "....dskssksd..cd", 7: "....dssssssd..cd", 8: ".....ssssss...c.d",
-    9: ".cc..nnnnnn...c.d", 10: ".qq.nndnnnnns.c.d", 11: ".qqsnnndnnnn..c.d", 12: ".qq.ddddgddd..cd",
-    13: "....NNNNNNNN..cd", 14: ".....dd..dd...d.",
-}))
+for tag in POSES: pose("archer", tag, A)        # the bow does the drawing and loosing
 
 Z = SPR["wizard"][1]
 pose("wizard", "stance", Z)
-pose("wizard", "windup", swap(Z, {             # staff raised
-    0: ".............c..", 1: ".......hh...cCc.", 2: "......hhhh...c..", 3: "......hyhh...w..",
-    4: ".....gggggg..w..", 5: "....hhhhhhhh.w..", 6: ".....ssssss..w..", 7: ".....skssks..w..",
-    8: ".....bssssb..w..", 9: ".....bbbbbb.sw..", 10: "....rrbbbbrrrw..", 11: "...srrrbbrrr....",
-    12: "....rrrRRrrr....", 13: "....gggggggg....", 14: ".....dd..dd.....",
-}))
-pose("wizard", "strike", swap(Z, {             # staff thrust out
-    2: "......hhhh......", 3: "......hyhh......", 4: ".....gggggg.....", 5: "....hhhhhhhh....",
-    6: ".....ssssss.....", 7: ".....skssks.....", 8: ".....bssssb........c..", 9: ".....bbbbbb.swwwwwcCc.",
-    10: "....rrbbbbrrr......c..", 11: "...srrrbbrrr....", 12: "....rrrRRrrr....",
-    13: "....gggggggg....", 14: ".....dd..dd.....",
-}))
+for tag in ("windup", "strike"):                # raised, then thrust out: the hand at the chest
+    pose("wizard", tag, swap(Z, {9: ".....bbbbbb.s", 10: "....rrbbbbrrr", 11: "...srrrbbrrr"}))
 
 # The healer throws with the free hand, so its stance is the mirror of the
 # everyday sprite: staff on the far side, free hand toward the monster.
 H = [r[::-1] for r in SPR["healer"][1]]
-SPR["healer"][0]["P"] = "#3fbf8f"
 pose("healer", "stance", H)
-pose("healer", "windup", dots(H, [(12, 10, "."), (12, 9, "r"), (13, 8, "s"), (13, 5, "h"), (13, 6, "P"), (14, 6, "P"), (13, 7, "P"), (14, 7, "P")]))  # potion held up
-pose("healer", "strike", dots(H, [(13, 10, "r"), (14, 10, "s")]))                                                                         # arm flung out
+pose("healer", "windup", dots(H, [(12, 10, "."), (12, 9, "r"), (13, 8, "s")]))  # hand up, holding the potion
+pose("healer", "strike", dots(H, [(13, 10, "r"), (14, 10, "s")]))              # arm flung out
+
+# ---- Weapons: a layer of its own over the class's picture and under its hat.
+# For each class, weapon and picture, a see-through PNG the size of the
+# picture it lies on (weapons/<class>/<weapon>/<frame>.png), so the mod lays
+# one over the other with no sums, and one serves every colourway: a weapon
+# keeps its own colours whatever the armour. Each weapon is (palette, rows),
+# its rows per pose sparse ({row: text}, "." empty): "stand" in the everyday
+# 16x16 grid (also its stance: the warrior, wizard and archer stand ready),
+# "windup" and "strike" in the 22-wide grid, held in the hand of the class's
+# pose. Each is pushed through the same canvas, lean, shear and mirror as the
+# body. The healer keeps its staff; its "weapon" is the potion it holds up in
+# its wind-up and throws, so its weapons have only those two pictures. Each
+# class's ids, in this order, must match WEAPON_NAMES in mods/idle-rpg/rules.js
+# (the first, "default", is what the class always had), and the pictures each
+# has WEAPON_FRAMES there. In the everyday grid a weapon stays inside columns
+# 1 to 14, so walking and dangling keep its outline on the canvas.
+STEEL = {"A": "#dfe6ee", "a": "#9aa7b8", "k": "#5b6675", "g": "#f2c14e", "d": "#7a5230", "D": "#5a3d22"}
+FLAME = {"r": "#e2552f", "o": "#ff9d3c", "y": "#ffe27a", "W": "#fff3b0", "R": "#8f2626", "g": "#f2c14e", "d": "#7a5230"}
+FROST = {"I": "#ffffff", "i": "#9fd0f5", "b": "#4f86c6"}
+COLUMN = lambda x, ys, ch: {y: "." * x + ch for y in ys}   # one pixel per row, down column x
+WEAPONS = {
+"warrior": {
+    "default": (STEEL, {                         # Longsword
+        "stand": {**COLUMN(13, range(2, 11), "A"), 11: "............ggg", 12: ".............d"},
+        "windup": {**COLUMN(13, range(0, 6), "A"), 6: "............ggg"},
+        "strike": {9: "..............g", 10: "..............gAAAAAAA", 11: "..............g"},
+    }),
+    "axe": (STEEL, {                             # Battle Axe: a broad blade on a long haft
+        "stand": {0: ".............d", 1: "............AdA", 2: "............AaA", 3: "............AdA",   # a blade each side, standing
+                  **COLUMN(13, range(4, 13), "d"), 13: ".............D"},
+        "windup": {0: ".............daA", 1: ".............daaA", 2: ".............daaA", 3: ".............daA",
+                   **COLUMN(13, range(4, 7), "d"), 8: ".............D"},
+        "strike": {9: "..................aa", 10: "..............ddddaad", 11: "..................aaA",
+                   12: "..................aaaA", 13: "..................AAAA"},
+    }),
+    "hammer": (STEEL, {                          # War Hammer: a heavy iron head
+        "stand": {0: "............aAa", 1: "............aaa", 2: "............kkk", **COLUMN(13, range(3, 13), "d"), 13: ".............D"},
+        "windup": {0: "...........aaAaa", 1: "...........aaaaa", 2: "...........kkkkk", **COLUMN(13, range(3, 7), "d"), 8: ".............D"},
+        "strike": {8: "...................aAk", 9: "...................aAk", 10: "..............dddddaAk",
+                   11: "...................aAk", 12: "...................aAk"},
+    }),
+    "flame": (FLAME, {                           # Flame Blade: burning from guard to tip
+        "stand": {1: ".............r", 2: ".............or", 3: ".............y", 4: ".............W", 5: ".............yo",
+                  6: ".............W", 7: ".............y", 8: ".............Wr", 9: ".............y", 10: ".............o",
+                  11: "............RgR", 12: ".............d"},
+        "windup": {0: ".............o", 1: "............ryr", 2: ".............W", 3: ".............yo", 4: ".............W",
+                   5: ".............y", 6: "............RgR"},
+        "strike": {9: "..............R..r..o", 10: "..............goyWyWyo", 11: "..............R...r"},
+    }),
+},
+"wizard": {
+    "default": ({"c": "#8fe3ff", "C": "#ffffff", "w": "#8a5a2b"}, {   # Ember Staff
+        "stand": {2: ".............c", 3: "............cCc", 4: ".............c", **COLUMN(13, range(5, 15), "w")},
+        "windup": {0: ".............c", 1: "............cCc", 2: ".............c", **COLUMN(13, range(3, 11), "w")},
+        "strike": {8: "...................c", 9: ".............wwwwwcCc", 10: "...................c"},
+    }),
+    "frost": ({**FROST, "v": "#c9d6e6"}, {     # Frost Wand: short and silver, tipped with an icicle
+        "stand": {2: ".............I", 3: ".............I", 4: ".............i", 5: ".............b", **COLUMN(13, range(6, 13), "v")},
+        "windup": {0: ".............I", 1: ".............I", 2: ".............i", 3: ".............b", **COLUMN(13, range(4, 11), "v")},
+        "strike": {9: ".............vvvvbiII"},
+    }),
+    "storm": ({"k": "#3b3f5c", "n": "#6b7090", "Y": "#ffe27a", "W": "#ffffff"}, {   # Storm Staff: a forked iron head, a spark caught in it
+        "stand": {0: ".............Y", 1: "............nWn", 2: "............kYk", 3: ".............k", **COLUMN(13, range(4, 15), "k")},
+        "windup": {0: "............nWn", 1: "............kYk", 2: ".............k", **COLUMN(13, range(3, 11), "k")},
+        "strike": {8: "..................kn", 9: ".............kkkkkkYWY", 10: "..................kn"},
+    }),
+    "venom": ({"V": "#c4ff8f", "v": "#6fcf3f", "x": "#2f7a22", "n": "#5a4326"}, {   # Venom Wand: short and crooked, a dripping glob
+        "stand": {5: ".............Vv", 6: ".............vx", 7: "............n", 8: "..............v", **COLUMN(13, range(8, 13), "n")},
+        "windup": {3: ".............Vv", 4: ".............vx", 5: "............n", 6: "..............v", **COLUMN(13, range(6, 11), "n")},
+        "strike": {8: "................Vv", 9: ".............nnnvx", 10: ".................v"},
+    }),
+},
+"archer": {
+    "default": ({"d": "#7a5230", "c": "#f4ecd8", "A": "#dfe6ee"}, {   # Longbow
+        "stand": {5: "............d", 6: "............cd", 7: "............cd", 8: "............c.d", 9: "............c.d",
+                  10: "..............d", 11: "............c.d", 12: "............cd", 13: "............cd", 14: "............d"},
+        "windup": {5: "..............d", 6: "..............cd", 7: "..............cd", 8: ".............c..d", 9: ".............c..d",
+                   10: ".............ddddA", 11: ".............c..d", 12: ".............c.d", 13: "..............cd", 14: "..............d"},
+        "strike": {5: "..............d", 6: "..............cd", 7: "..............cd", 8: "..............c.d", 9: "..............c.d",
+                   10: "..............c.d", 11: "..............c.d", 12: "..............cd", 13: "..............cd", 14: "..............d"},
+    }),
+    "crossbow": ({"w": "#9a6639", "D": "#5a3d22", "a": "#9aa7b8", "A": "#dfe6ee", "k": "#5b6675"}, {   # Crossbow: held level, no string to draw
+        "stand": {6: ".............A", 7: "............aka", 8: "............a.a", **COLUMN(13, range(9, 12), "w"), 12: ".............D", 13: ".............D"},
+        "windup": {8: "................a", 9: ".................a", 10: ".............wwwwkA", 11: "..............D..a", 12: "................a"},
+        "strike": {8: "................a", 9: ".................a", 10: ".............wwwwk", 11: "..............D..a", 12: "................a"},
+    }),
+    "flame": ({"R": "#a53030", "o": "#ff9d3c", "y": "#ffe9a8", "d": "#7a5230", "r": "#e2552f", "Y": "#ffe27a"}, {   # Flame Bow: fire arrows
+        "stand": {5: "............o", 6: "............yR", 7: "............yR", 8: "............y.R", 9: "............y.R",
+                  10: "..............R", 11: "............y.R", 12: "............yR", 13: "............yR", 14: "............o"},
+        "windup": {5: "..............o", 6: "..............yR", 7: "..............yR", 8: ".............y..R", 9: ".............y..RY",
+                   10: ".............dddRr", 11: ".............y..R", 12: ".............y.R", 13: "..............yR", 14: "..............o"},
+        "strike": {5: "..............o", 6: "..............yR", 7: "..............yR", 8: "..............y.R", 9: "..............y.R",
+                   10: "..............y.R", 11: "..............y.R", 12: "..............yR", 13: "..............yR", 14: "..............o"},
+    }),
+    "frost": ({**FROST, "d": "#7a5230"}, {      # Frost Bow: frost arrows
+        "stand": {5: "............I", 6: "............Ib", 7: "............Ib", 8: "............I.i", 9: "............I.i",
+                  10: "..............i", 11: "............I.i", 12: "............Ib", 13: "............Ib", 14: "............I"},
+        "windup": {5: "..............I", 6: "..............Ib", 7: "..............Ib", 8: ".............I..i", 9: ".............I..iI",
+                   10: ".............dddib", 11: ".............I..i", 12: ".............I.b", 13: "..............Ib", 14: "..............I"},
+        "strike": {5: "..............I", 6: "..............Ib", 7: "..............Ib", 8: "..............I.i", 9: "..............I.i",
+                   10: "..............I.i", 11: "..............I.i", 12: "..............Ib", 13: "..............Ib", 14: "..............I"},
+    }),
+},
+"healer": {                                      # the potion held up: a cork over a little flask
+    "default": ({"h": "#e6dfcc", "P": "#3fbf8f"}, {"windup": {5: ".............h", 6: ".............PP", 7: ".............PP"}}),   # Healing Potion
+    "haste": ({"h": "#e6dfcc", "L": "#fff0b0", "P": "#f2c14e"}, {"windup": {5: ".............h", 6: ".............LP", 7: ".............PP"}}),
+    "might": ({"h": "#e6dfcc", "L": "#ff9a8a", "P": "#d63a3a"}, {"windup": {5: ".............h", 6: ".............LP", 7: ".............PP"}}),
+    "hex": ({"h": "#e6dfcc", "L": "#d8b4ff", "P": "#7a3fb8"}, {"windup": {5: ".............h", 6: ".............LP", 7: ".............PP"}}),
+},
+}
+assert set(WEAPONS) == set(SPR) and all(list(w)[0] == "default" for w in WEAPONS.values())
+assert all(i.isalpha() and i.islower() for w in WEAPONS.values() for i in w)
+
+def sparse(rows, width):
+    assert all(0 <= y < 16 and len(t) <= width for y, t in rows.items()), rows
+    return [rows.get(y, "").ljust(width, ".") for y in range(16)]
+
+def armed(poses):
+    # a weapon's pictures as (frame, grid), like pictures(): the everyday ones
+    # if it has a "stand", whose rows are its stance too, and each pose it has
+    stand = sparse(poses["stand"], 16) if "stand" in poses else None
+    tags = [t for t in POSES if t in poses or (t == "stance" and stand)]
+    return pictures(stand, lambda t: sparse(poses.get(t, poses.get("stand")), 22), tags)
+
+def near(g, y, x):
+    return any(0 <= y+j < len(g) and 0 <= x+i < len(g[0]) and g[y+j][x+i] for i, j in ((1,0),(-1,0),(0,1),(0,-1)))
+
+def layer(weapon, body, pal):
+    # The weapon's pixels, and the part of the one outline around body and
+    # weapon that is the weapon's: around it, wherever the body's own outline
+    # (drawn with the body) does not already go. Laid over the body, the two
+    # make the picture with one outline around both.
+    h, w = len(body), len(body[0])
+    o = [[None] * w for _ in range(h)]
+    for y in range(h):
+        for x in range(w):
+            if weapon[y][x]: o[y][x] = pal[weapon[y][x]]
+            elif not body[y][x] and near(weapon, y, x) and not near(body, y, x): o[y][x] = OUTLINE
+    return o
+
+for cls, (base, rows) in SPR.items():
+    assert len(rows) == 16 and all(len(r) == 16 for r in rows), (cls, [len(r) for r in rows])
+    body = pictures(rows, lambda tag: POSED[(cls, tag)])
+    for name, swaps in looks(cls):                              # every colourway, the default first
+        pal = {**COMMON, **base, **swaps, "#": OUTLINE}
+        for frame, g in body:
+            write(f"{name}/{frame}.png", png(outlined(g), pal))
+    shape = dict(body)
+    frames = None
+    for weapon, (pal, poses) in WEAPONS[cls].items():
+        pics = armed(poses)
+        assert frames in (None, [f for f, _ in pics]), (cls, weapon)  # every weapon of a class has the same pictures
+        frames = [f for f, _ in pics]
+        for frame, g in pics:
+            assert all(c != "." for row in g for c in row if c) and all(not c or c in pal for row in g for c in row), (cls, weapon, frame)
+            write(f"weapons/{cls}/{weapon}/{frame}.png", png(layer(g, shape[frame], pal), {}))
 
 # ---- The pixel font: digits and a few signs, 3x5, for damage numbers and the
 # badges on the status icons. Each glyph is outlined all round (corners too, so
@@ -1190,29 +1431,6 @@ HATS = {
 }
 assert all(i.isalpha() and i.islower() and i != "default" for i in HATS)
 assert all(set(HATS[i]) == set(SPR) for i in HATS)
-
-def box(rows):
-    # a fighting pose's 22x16 rows on its 24x18 picture, as icon() lays them out
-    g = [[None] * 24 for _ in range(18)]
-    for y, row in enumerate(rows):
-        for x, ch in enumerate(row):
-            if ch != ".": g[y + 1][x + 1] = ch
-    return g
-
-def pictures(rows, posed):
-    # every picture of a class as (frame, grid), as the code above draws it:
-    # `rows` in the everyday 16x16 grid, `posed(tag)` a pose's 22-wide rows.
-    # The frames are FRAMES in mods/idle-rpg/rules.js.
-    out = [("stand", canvas(rows, 18, 1))]
-    for tag, side in (("l", -1), ("r", 1)):
-        out.append((f"walk/{tag}", canvas(lift(rows, side), 18, 1, lambda y: side if y < 14 else 0)))
-    out.append(("rag/c", canvas(rows, 22, 3)))
-    for tag, side in (("l", -1), ("r", 1)):
-        out.append((f"rag/{tag}", canvas(rows, 22, 3, lambda y: side * round(y * 0.2))))
-    for tag in ("stance", "windup", "strike"):
-        out.append((f"{tag}/r", box(posed(tag))))
-        out.append((f"{tag}/l", box([r[::-1] for r in posed(tag)])))
-    return out
 
 def overlay(hat, body):
     # the hat's pixels, and its outline where the body's picture (outline and

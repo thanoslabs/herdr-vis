@@ -15,17 +15,18 @@
 // Battle mode (the Start Raid / Return to town button by the sign): a random monster stands in the middle
 // (a slime has 100 HP, an ogre 300, a dragon 500) and the party forms up
 // around it, warriors up close and everyone else at range. Every working agent
-// attacks in its own way (sword swing, arrow, fireball, thrown potion) on its
-// own rhythm, every 3 seconds or less; when the monster falls another one
-// turns up. Turning it off sends everyone back to their spots.
+// attacks in its own way (a swing, an arrow or bolt, a spell, a thrown potion,
+// each looking like the weapon its class holds) on its own rhythm, every 3
+// seconds or less; when the monster falls another one turns up. Turning it off sends everyone back to their spots.
 // Progress (rules.js): every point of damage that lands earns experience for
 // the attacker's class and for you; a kill earns gold. Each class level earns
 // that class a skill point, spent in the skills panel on Power (damage),
 // Haste (attack speed) or Crit (double damage now and then). Levels show on
 // the cards and the class choices, gold, kills and points to spend on the sign.
-// Gold buys colourways and hats for a class in the shop (the coin on the
-// sign); everyone with that class on wears what it has equipped. A hat is
-// bought once for every class, and each class picks its own.
+// Gold buys colourways, weapons and hats for a class in the shop (the coin on
+// the sign); everyone with that class on wears what it has equipped. A hat is
+// bought once for every class, and each class picks its own. A weapon changes
+// how the class and its attacks look, not (yet) what they do.
 // In the top-right corner, how many agents are in each status (an icon with a
 // count on its corner, hidden at none), and a gear that opens the settings
 // (SETTINGS in rules.js), such as the damage numbers that rise off the monster.
@@ -44,6 +45,7 @@ import {
   STATE_VERSION,
   TICK_STEP,
   YOU,
+  attackArt,
   attackGap,
   attackTicksOf,
   blow,
@@ -74,14 +76,15 @@ import {
   resetSkills,
   SETTINGS,
   slay,
+  weaponArt,
 } from "./rules.js";
 
 const ART = "mods/idle-rpg/art";
 // The path image() takes for a picture in art/, given its path in there with
 // ".png" ("scene/wall.png"). The pictures are in folders by what they show,
 // then by what it is doing (see tools/idle-rpg-sprites.py); rules.js builds the
-// paths that depend on the state or an agent (lookArt, hatArt, monsterArt,
-// glyphArt), and the rest are named where they are drawn.
+// paths that depend on the state or an agent (lookArt, weaponArt, hatArt,
+// attackArt, monsterArt, glyphArt), and the rest are named where they are drawn.
 const src = (file) => `${ART}/${file}`;
 // shared: { version, you: {x, y}, spots: { <address>: {x, y} }, sprites: { you | <address>: <class> },
 //   seen, battle, monster, slain, gold, kills: { <kind>: n }, xp: { you | <class>: n },
@@ -456,19 +459,21 @@ export default class RaidParty extends View {
   }
 
   // One of class `cls`'s pictures as an element `w` by `h`, wherever a class
-  // is drawn: the picture (see look) with the hat the class has on, or `hat`
-  // (the shop's previews), laid over it at the same size and place. The hat's
-  // picture is the same canvas as the frame under it, so there is nothing to
-  // line up. No hat, no overlay.
-  sprite(cls, frame, w, h, colour = equipped(this.progress, cls, "armour"), hat = equipped(this.progress, cls, "hat")) {
-    const top = hatArt(cls, hat, frame);
+  // is drawn: the picture (see look), then the weapon the class holds, or
+  // `weapon`, then the hat it has on, or `hat` (the shop's previews), each laid
+  // over the last at the same size and place. Each layer's picture is the same
+  // canvas as the frame under it, so there is nothing to line up. No hat, no
+  // hat layer; no weapon layer where the weapon has no picture (the healer's
+  // potion shows only as it winds up).
+  sprite(cls, frame, w, h, colour = equipped(this.progress, cls, "armour"), hat = equipped(this.progress, cls, "hat"), weapon = equipped(this.progress, cls, "weapon")) {
+    const layers = [weaponArt(cls, weapon, frame), hatArt(cls, hat, frame)].filter(Boolean);
     return div()
       .relative()
       .flex_none()
       .w(w)
       .h(h)
       .child(image(this.look(cls, frame, colour)).w(w).h(h))
-      .when(Boolean(top), (el) => el.child(div().absolute().left(0).top(0).child(image(src(top)).w(w).h(h))));
+      .children(layers.map((top) => div().absolute().left(0).top(0).child(image(src(top)).w(w).h(h))));
   }
 
   // Starts the attack clock if it is stopped and anyone is ready to attack.
@@ -579,9 +584,10 @@ export default class RaidParty extends View {
   }
 
   // What flies and lands for one agent's attack (the sprite itself strikes the
-  // pose, see critter). Things that fly sit hidden at the hand, glide to the
-  // monster during phases 2 and 3, then vanish and slip back unseen; the impact
-  // pops in at phase 4 and fades.
+  // pose, see critter), in the pictures of the weapon its class holds (see
+  // attackArt). Things that fly sit hidden at the hand, glide to the monster
+  // during phases 2 and 3, then vanish and slip back unseen; the impact pops in
+  // at phase 4 and fades.
   // `who` is { key, cls, x, y, dir }: an agent in formation, or you.
   attack(who, W, kind) {
     const s = who;
@@ -612,18 +618,20 @@ export default class RaidParty extends View {
         .transition("top", { duration: FLIGHT, easing: "linear" })
         .child(inner(div().relative()).child(art(name, w, h)));
     const from = (dx, dy) => ({ x: s.x + d * dx, y: s.y - dy });
+    const weapon = equipped(this.progress, c, "weapon");
+    const part = (name) => attackArt(c, weapon, name, side);
 
-    // the warrior swings its own sword; only the slash is extra
-    if (c === "warrior") return [pop("slash", `attacks/slash/${side}.png`, 32, 44, from(62, 24), phase === 2)];
-    if (c === "archer") return [shot(`attacks/arrow/${side}.png`, 44, 20, from(40, 22)), pop("hit", "status/spark.png", 20, 20, hit, phase === 4)];
-    if (c === "wizard") return [shot(`attacks/fireball/${side}.png`, 40, 32, from(46, 26)), pop("hit", "attacks/burst.png", 44, 44, hit, phase === 4)];
+    // the warrior swings its own weapon; only the slash is extra
+    if (c === "warrior") return [pop("slash", part("shot"), 32, 44, from(62, 24), phase === 2)];
+    if (c === "archer") return [shot(part("shot"), 44, 20, from(40, 22)), pop("hit", part("hit"), 20, 20, hit, phase === 4)];
+    if (c === "wizard") return [shot(part("shot"), 40, 32, from(46, 26)), pop("hit", part("hit"), 44, 44, hit, phase === 4)];
     // healer: the potion is lobbed, rising for the first half and falling for the second
     const lob = (el) =>
       el
         .id(`idle-rpg-lob-${who.key}`)
         .top(phase === 2 ? -44 : 0)
         .transition("top", { duration: FLIGHT / 2, easing: phase === 2 ? "ease-out" : "ease-in" });
-    return [shot("attacks/potion.png", 28, 36, from(24, 40), lob), pop("hit", "attacks/splash.png", 52, 32, hit, phase === 4)];
+    return [shot(part("shot"), 28, 36, from(24, 40), lob), pop("hit", part("hit"), 52, 32, hit, phase === 4)];
   }
 
   // The monster and its health bar. `hits` is how many agents are attacking it.
@@ -2179,13 +2187,15 @@ export default class RaidParty extends View {
   }
 
   // The shop, under the sign like the skills panel: your gold, the four
-  // classes to pick from (each in the colourway and hat it has on), then for
-  // the one picked, everything of one kind the shop sells: a preview of the
-  // sprite in it, its name, and "Equipped", an Equip button (owned) or a Buy
-  // button with its price, dimmed and dead while the gold is short. Buying
+  // classes to pick from (each in the colourway, weapon and hat it has on),
+  // then for the one picked, everything of one kind the shop sells: a preview
+  // of the sprite in it, its name, and "Equipped", an Equip button (owned) or a
+  // Buy button with its price, dimmed and dead while the gold is short. Buying
   // puts it on as well; buying and equipping save straight away. Down its left
   // side are the kinds of item (SHOP in rules.js): armours, weapons, hats, with
-  // room under them for more. A hat is bought once for every class, which the
+  // room under them for more. A weapon is shown in the class's hand as it
+  // winds up to attack, where every weapon shows best (the healer's potion
+  // only shows then). A hat is bought once for every class, which the
   // panel says under them while hats are shown; each class still has its own
   // on. A kind with nothing for sale yet says so. Short enough for the scene
   // at its lowest (230px, the sign taking 54).
@@ -2193,8 +2203,14 @@ export default class RaidParty extends View {
     const cls = this.shopOpen;
     const kind = SHOP_KINDS.includes(this.shopKind) ? this.shopKind : SHOP_KINDS[0];
     const items = catalogue(cls, kind);
-    // each armour with the class's hat on, each hat over the class's armour
-    const preview = { armour: (it) => this.sprite(cls, "stand", 36, 36, it.id), hat: (it) => this.sprite(cls, "stand", 36, 36, undefined, it.id) };
+    // each armour with the class's weapon and hat on, each weapon held up in
+    // the class's armour and hat (a pose is 24x18 art px, so 48 wide at 36
+    // high), each hat over the class's armour and weapon
+    const preview = {
+      armour: (it) => this.sprite(cls, "stand", 36, 36, it.id),
+      weapon: (it) => this.sprite(cls, "windup/r", 48, 36, undefined, undefined, it.id),
+      hat: (it) => this.sprite(cls, "stand", 36, 36, undefined, it.id),
+    };
     const nav = (k) =>
       h_flex()
         .id(`idle-rpg-shop-kind-${k}`)
