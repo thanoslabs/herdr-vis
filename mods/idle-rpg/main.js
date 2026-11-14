@@ -765,7 +765,7 @@ export default class RaidParty extends View {
       if (this.spots[a.address]) continue;
       for (let i = 0; ; i++) {
         const s = { x: 250 + (i % perRow) * CELL_W, y: Math.floor(i / perRow) % 2 ? 104 : 64 };
-        if (fire !== null && this.inFire(s, fire)) continue; // never in the campfire (the first column never is)
+        if (fire !== null && this.clearOfFire(s, fire) !== s) continue; // never behind the campfire (the first column never is)
         const taken = Object.entries(this.spots).some(([k, o]) => live.has(k) && Math.abs(o.x - s.x) < 50 && Math.abs(o.y - s.y) < 30);
         if (!taken || i > 200) {
           this.spots[a.address] = s;
@@ -777,6 +777,18 @@ export default class RaidParty extends View {
 
   // Whether someone standing at p would be in the campfire at x: anywhere
   // across its stones and short of a step in front of them.
+  // Where someone whose spot is p stands while the campfire is at x: at p,
+  // unless that is behind the fire or in it (above its base, where the flames
+  // would hide them), then on the same row just past its nearer side. A spot
+  // below the base, in front of the stones, is left alone. For agents, who
+  // cannot stand as low as you can; the saved spot is not changed, so it is
+  // theirs again when the fire is elsewhere (a raid, another window width).
+  clearOfFire(p, x) {
+    const reach = FIRE_W / 2 + 8;
+    if (Math.abs(p.x - x) >= reach || p.y >= FIRE_Y) return p;
+    return { x: x + (p.x < x ? -reach : reach), y: p.y };
+  }
+
   inFire(p, x) {
     return Math.abs(p.x - x) < FIRE_W / 2 + 8 && p.y < FIRE_Y + 12;
   }
@@ -1445,6 +1457,8 @@ export default class RaidParty extends View {
     this.place(list, W);
     if (this.card && this.card !== YOU && !list.some((a) => a.address === this.card)) this.card = null;
     const you = { x: Math.round(clamp(this.you.x, 30, W - 30)), y: Math.round(clamp(this.you.y, YOU_Y[0], YOU_Y[1])) };
+    const fire = this.fireX(W);
+    if (fire !== null && this.inFire(you, fire)) you.y = Math.min(YOU_Y[1], FIRE_Y + 12); // left in the fire by an older save or a resize: out in front of it
     this.you = you;
 
     // Whoever stands lower on the floor is drawn in front.
@@ -1452,14 +1466,14 @@ export default class RaidParty extends View {
     // In a fight everyone stands in formation; otherwise at their own spots.
     const foeKind = this.battle && W >= 640 ? MONSTERS[this.monster?.kind] : null;
     this.fighting = Boolean(foeKind);
-    this.at = foeKind ? this.formation(list, W, foeKind) : this.spots;
+    // (by the campfire a copy, since those behind it are drawn beside it: see the loop below)
+    this.at = foeKind ? this.formation(list, W, foeKind) : fire !== null ? { ...this.spots } : this.spots;
     const youDir = you.x <= W / 2 + (foeKind?.core.x ?? 0) ? 1 : -1; // which way the monster is from you
     this.youFights = hits > 0 && !this.walking && this.joins(W);
     this.struck = (this.youFights && this.phaseOf(YOU) === 4) || list.some((a) => a.status === "working" && this.phaseOf(a.address) === 4);
     this.youDir = youDir;
     const actors = [{ y: you.y, draw: () => [this.you_()] }, { y: MONSTER_Y, draw: () => this.foe(W, hits) }];
     // the campfire stands among them, so whoever is in front of it is drawn over it (first, so a tie goes to them)
-    const fire = this.fireX(W);
     if (fire !== null) actors.unshift({ y: FIRE_Y, draw: () => this.campfire(fire) });
     if (this.youFights) actors.push({ y: FLOOR_H, draw: () => this.attack({ key: YOU, cls: this.sprites[YOU], x: you.x, y: you.y, dir: youDir }, W, foeKind) });
     for (const a of list) {
@@ -1467,6 +1481,7 @@ export default class RaidParty extends View {
       const s = this.spots[a.address];
       s.x = Math.round(clamp(s.x, 36, W - 36));
       s.y = Math.round(s.y);
+      if (fire !== null && !foeKind) this.at[a.address] = this.clearOfFire(s, fire);
       actors.push({ y: this.at[a.address].y, draw: () => this.critter(a) });
       if (this.fighting && a.status === "working" && this.monster.hp > 0) actors.push({ y: FLOOR_H, draw: () => this.attack({ key: a.address, cls: this.sprites[a.address], ...this.at[a.address] }, W, foeKind) });
     }

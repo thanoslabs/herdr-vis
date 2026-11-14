@@ -558,8 +558,10 @@ for y in range(FIRE_H):                                                # the hea
     for x in range(FIRE_W): base[y][x] = heart[y][x] or base[y][x]
 for x, y, a in sorted(ring, key=lambda s: s[1]):                       # the front of the ring
     if math.sin(a) >= 0: fire_stone(base, x, y, 4.3, 3.0, rnd)
+behind = [row[:] for row in base]
 fire_log(base, 8, 38, 31, 12, 4.2, rnd)                                # crossed in front, resting on the stones
 fire_log(base, 46, 38, 23, 12, 4.2, rnd)
+front = [[c != b for c, b in zip(row, was)] for row, was in zip(base, behind)]  # the front logs: the flames burn behind them
 save("campfire/base.png", base)
 for i, tongues in enumerate([
     [(28, 1, 30, 9, 4, 1.0), (19, 12, 30, 5, -2, 0.75)],               # tall, leaning right, a tongue on the left
@@ -568,7 +570,7 @@ for i, tongues in enumerate([
     [(24, 4, 30, 7, -2, 0.9), (31, 3, 30, 7, 3, 0.9)],                 # forked
 ], 1):
     g = flames(tongues)
-    g = [[(heart[y][x] if base[y][x] == heart[y][x] else None) if y >= FIRE_HEART else c for x, c in enumerate(row)] for y, row in enumerate(g)]
+    g = [[(heart[y][x] if base[y][x] == heart[y][x] else None) if y >= FIRE_HEART else (None if front[y][x] else c) for x, c in enumerate(row)] for y, row in enumerate(g)]
     save(f"campfire/flame-{i}.png", g)
 
 save("icons/wrench.png", chars([  # the card's, to change class; double-ended: an open jaw at each end
