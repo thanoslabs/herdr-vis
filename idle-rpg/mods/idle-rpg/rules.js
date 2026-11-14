@@ -19,7 +19,8 @@ export const CLASSES = ["wizard", "healer", "warrior", "archer"];
 export const YOU = "you"; // the person's key in `sprites`, `xp` and as an open card
 export const STATE_VERSION = 4;
 // Each kind's HP, kept on a monster as `maxHp` when it turns up. The kinds are
-// the keys of MONSTERS in main.js, which draws them.
+// the keys of MONSTERS in main.js, which draws them (each needs its pictures
+// in MONSTER_ART below too).
 export const MONSTER_HP = { slime: 100, ogre: 300, dragon: 500 };
 export const KINDS = Object.keys(MONSTER_HP);
 const OLD_MONSTER_HP = 100; // what every monster had before HP by kind, for one saved without `maxHp`
@@ -103,12 +104,36 @@ export const SHOP = {
 };
 export const SHOP_KINDS = Object.keys(SHOP);
 
-// Every picture a class has in art/, as what follows its name: standing,
-// walking, dangling, and the fighting poses (stance, wind-up, strike) facing
-// each way. main.js draws them; tools/idle-rpg-sprites.py draws each of them
-// in every colourway, and every hat to lay over each.
-export const POSES = ["f", "a1", "a2"];
-export const FRAMES = ["", "-walk-l", "-walk-r", "-rag-c", "-rag-l", "-rag-r", ...POSES.flatMap((p) => [`-${p}-l`, `-${p}-r`])];
+// Every picture a class has, as its path inside the look's folder (see
+// lookArt) and the hat's (see hatArt), without ".png": standing, walking,
+// dangling, and the fighting poses (stance, wind-up, strike) facing each way.
+// main.js draws them; tools/idle-rpg-sprites.py draws each of them in every
+// colourway, and every hat to lay over each.
+export const POSES = ["stance", "windup", "strike"];
+export const FRAMES = ["stand", "walk/l", "walk/r", "rag/c", "rag/l", "rag/r", ...POSES.flatMap((p) => [`${p}/l`, `${p}/r`])];
+const frameOf = (frame) => (FRAMES.includes(frame) ? frame : FRAMES[0]);
+
+// The pictures in art/ are in folders by what they show, then by what it is
+// doing (see tools/idle-rpg-sprites.py). The functions here build the path,
+// inside art/ and with ".png", of every picture whose name depends on the
+// state or an agent (a class, a look, a hat, a monster, a character), so no
+// saved string can reach a path unchecked. main.js names the rest itself.
+//
+// Each monster's pictures in monsters/<kind>/, without ".png": its whole
+// picture ("idle", also the codex's), the eyelids laid over it ("blink"), the
+// pieces that move on their own (see foe in main.js), and its roar. Every kind
+// in KINDS has one.
+export const MONSTER_ART = {
+  slime: ["idle", "blink", "top", "base"],
+  ogre: ["idle", "blink", "top", "roar/roar"],
+  dragon: ["idle", "blink", "top", "body", "tail", "roar/rear", "roar/roar", "roar/top", "roar/wave"],
+};
+
+// The path in art/ of picture `part` of monster `kind` ("monsters/dragon/roar/top.png"),
+// or null for a kind or a part it does not have.
+export function monsterArt(kind, part = "idle") {
+  return KINDS.includes(kind) && MONSTER_ART[kind].includes(part) ? `monsters/${kind}/${part}.png` : null;
+}
 
 // The settings menu (the gear in the top-right corner): one switch per entry,
 // in this order, each { key, name, default }. A setting is a boolean saved under
@@ -121,12 +146,12 @@ export const GLYPHS = "0123456789+!";
 export const GLYPH_COLOURS = ["white", "gold"];
 const GLYPH_NAMES = { "+": "plus", "!": "bang" };
 
-// The name one character of the pixel font goes by in art/ in `colour`
-// ("glyph-gold-7", "glyph-white-plus"; add ".png" for a file), or null for a
-// character or colour it does not have, so no other string can end up in a path.
+// The path in art/ of one character of the pixel font in `colour`
+// ("font/gold/7.png", "font/white/plus.png"), or null for a character or
+// colour it does not have, so no other string can end up in a path.
 export function glyphArt(colour, ch) {
   if (!GLYPH_COLOURS.includes(colour) || typeof ch !== "string" || ch.length !== 1 || !GLYPHS.includes(ch)) return null;
-  return `glyph-${colour}-${GLYPH_NAMES[ch] ?? ch}`;
+  return `font/${colour}/${GLYPH_NAMES[ch] ?? ch}.png`;
 }
 
 const MAX = Number.MAX_SAFE_INTEGER;
@@ -390,26 +415,26 @@ export function equip(progress, cls, kind, id) {
   return true;
 }
 
-// The name a class's pictures go by in art/ in colourway `colour`: the class
-// itself for the default ("wizard", so "wizard-walk-l.png"), else the class
-// and the colourway ("wizard-crimson", so "wizard-crimson-walk-l.png"). Add
-// one of FRAMES and ".png" for a file.
-// Anything that is not one of the class's colourways gets the default, and an
-// unknown class the first one, so no other string can end up in a path.
-export function lookArt(cls, colour) {
+// The path in art/ of class `cls`'s picture `frame` (one of FRAMES) in
+// colourway `colour`: classes/<class>/<look>/<frame>.png, where <look> is
+// "default" or the colourway's id ("classes/wizard/crimson/walk/l.png").
+// Anything that is not one of the class's colourways gets the default, an
+// unknown class the first one and an unknown frame the first, standing, so no
+// other string can end up in a path.
+export function lookArt(cls, colour, frame = FRAMES[0]) {
   const c = CLASSES.includes(cls) ? cls : CLASSES[0];
-  return colour !== DEFAULT_LOOK && itemOf(c, "armour", colour) ? `${c}-${colour}` : c;
+  const look = colour !== DEFAULT_LOOK && itemOf(c, "armour", colour) ? colour : DEFAULT_LOOK;
+  return `classes/${c}/${look}/${frameOf(frame)}.png`;
 }
 
-// The name of hat `hat`'s pictures for class `cls` in art/: "hat-<hat>-<class>"
-// ("hat-party-wizard", so "hat-party-wizard-walk-l.png"), each laid over the
-// class's picture of the same frame at the same size. Add one of FRAMES and
-// ".png" for a file. Null for no hat: the default, or anything that is not a
-// hat for sale, so no other string can end up in a path (an unknown class
-// gets the first, as in lookArt).
-export function hatArt(cls, hat) {
+// The path in art/ of hat `hat`'s picture `frame` for class `cls`:
+// hats/<hat>/<class>/<frame>.png ("hats/party/wizard/walk/l.png"), laid over
+// the class's picture of the same frame at the same size. Null for no hat:
+// the default, or anything that is not a hat for sale, so no other string can
+// end up in a path (an unknown class or frame gets the first, as in lookArt).
+export function hatArt(cls, hat, frame = FRAMES[0]) {
   const c = CLASSES.includes(cls) ? cls : CLASSES[0];
-  return hat !== DEFAULT_LOOK && itemOf(c, "hat", hat) ? `hat-${hat}-${c}` : null;
+  return hat !== DEFAULT_LOOK && itemOf(c, "hat", hat) ? `hats/${hat}/${c}/${frameOf(frame)}.png` : null;
 }
 
 // The ids of `items` after the default that a saved list holds, in

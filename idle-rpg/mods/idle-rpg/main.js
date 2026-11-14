@@ -62,6 +62,7 @@ import {
   hatArt,
   loadState,
   lookArt,
+  monsterArt,
   monsterHp,
   owns,
   playerLevel,
@@ -76,6 +77,12 @@ import {
 } from "./rules.js";
 
 const ART = "mods/idle-rpg/art";
+// The path image() takes for a picture in art/, given its path in there with
+// ".png" ("scene/wall.png"). The pictures are in folders by what they show,
+// then by what it is doing (see tools/idle-rpg-sprites.py); rules.js builds the
+// paths that depend on the state or an agent (lookArt, hatArt, monsterArt,
+// glyphArt), and the rest are named where they are drawn.
+const src = (file) => `${ART}/${file}`;
 // shared: { version, you: {x, y}, spots: { <address>: {x, y} }, sprites: { you | <address>: <class> },
 //   seen, battle, monster, slain, gold, kills: { <kind>: n }, xp: { you | <class>: n },
 //   skills: { <class>: { power, haste, crit } },
@@ -109,10 +116,10 @@ const TICK_MS = 10000; // how often the sky moves on; everything glides between 
 // Clouds: art, size, how far up the sky (0 the wall top, 1 the ceiling), speed
 // in px/s, head start in px.
 const CLOUDS = [
-  { art: "a", w: 96, h: 28, up: 0.7, speed: 9, off: 0 },
-  { art: "b", w: 64, h: 20, up: 0.45, speed: 6, off: 520 },
-  { art: "a", w: 96, h: 28, up: 0.25, speed: 12, off: 930 },
-  { art: "b", w: 64, h: 20, up: 0.9, speed: 7.5, off: 1410 },
+  { art: "scene/cloud-a.png", w: 96, h: 28, up: 0.7, speed: 9, off: 0 },
+  { art: "scene/cloud-b.png", w: 64, h: 20, up: 0.45, speed: 6, off: 520 },
+  { art: "scene/cloud-a.png", w: 96, h: 28, up: 0.25, speed: 12, off: 930 },
+  { art: "scene/cloud-b.png", w: 64, h: 20, up: 0.9, speed: 7.5, off: 1410 },
 ];
 const CELL_W = 88;
 const YOU_Y = [12, FLOOR_H - 24];
@@ -125,9 +132,10 @@ const FIRE_H = 60;
 const CARD_W = 232;
 const SHOP_NAV_W = 78; // the kinds of item down the shop's left side
 const SHOP_ITEM_H = 78; // one thing for sale: picture, name, button
-const SHOP_ICONS = { armour: "i-armour", weapon: "sword-l", hat: "i-hat" };
+const SHOP_ICONS = { armour: "icons/armour.png", weapon: "status/sword-l.png", hat: "icons/hat.png" };
 // Battle mode. Sizes are on-screen px (art px x 4, plus the outline). A new
-// kind also needs its HP in MONSTER_HP in rules.js, which lists the kinds.
+// kind also needs its HP in MONSTER_HP in rules.js, which lists the kinds, and
+// its pictures in MONSTER_ART there.
 const MONSTERS = {
   slime: { name: "Slime", w: 136, h: 104, core: { x: 0, y: 44, r: 18, half: 60 } },
   ogre: { name: "Ogre", w: 200, h: 200, core: { x: 0, y: 86, r: 24, half: 62 } },
@@ -194,10 +202,10 @@ const capital = (word) => (typeof word === "string" && word ? word[0].toUpperCas
 function tally(list) {
   const n = (st) => list.filter((a) => a.status === st).length;
   return [
-    { status: "blocked", art: "alert", w: 27, h: 30 },
-    { status: "working", art: "i-swords", w: 27, h: 27 },
-    { status: "done", art: "done", w: 27, h: 30 },
-    { status: "idle", art: "i-sleep", w: 27, h: 27 },
+    { status: "blocked", art: "status/alert.png", w: 27, h: 30 },
+    { status: "working", art: "icons/swords.png", w: 27, h: 27 },
+    { status: "done", art: "status/done.png", w: 27, h: 30 },
+    { status: "idle", art: "icons/sleep.png", w: 27, h: 27 },
   ]
     .map((t) => ({ ...t, n: n(t.status) }))
     .filter((t) => t.n > 0);
@@ -216,7 +224,7 @@ function pixelText(text, colour, scale) {
     .relative()
     .w((4 * arts.length + 1) * scale)
     .h(GLYPH_H * scale)
-    .children(arts.map((art, i) => div().absolute().left(4 * i * scale).top(0).child(image(`${ART}/${art}.png`).w(5 * scale).h(GLYPH_H * scale))));
+    .children(arts.map((art, i) => div().absolute().left(4 * i * scale).top(0).child(image(src(art)).w(5 * scale).h(GLYPH_H * scale))));
 }
 
 function ago(ms) {
@@ -438,10 +446,10 @@ export default class RaidParty extends View {
   }
 
   // The path of one of class `cls`'s pictures in the colourway it has
-  // equipped, or in `colour` (the shop's previews). `frame` is what follows
-  // the name, one of FRAMES in rules.js: "" standing, "-walk-l", "-f-r" and so on.
-  look(cls, frame = "", colour = equipped(this.progress, cls, "armour")) {
-    return `${ART}/${lookArt(cls, colour)}${frame}.png`;
+  // equipped, or in `colour` (the shop's previews). `frame` is one of FRAMES
+  // in rules.js: "stand", "walk/l", "stance/r" and so on.
+  look(cls, frame = "stand", colour = equipped(this.progress, cls, "armour")) {
+    return src(lookArt(cls, colour, frame));
   }
 
   // One of class `cls`'s pictures as an element `w` by `h`, wherever a class
@@ -450,14 +458,14 @@ export default class RaidParty extends View {
   // picture is the same canvas as the frame under it, so there is nothing to
   // line up. No hat, no overlay.
   sprite(cls, frame, w, h, colour = equipped(this.progress, cls, "armour"), hat = equipped(this.progress, cls, "hat")) {
-    const top = hatArt(cls, hat);
+    const top = hatArt(cls, hat, frame);
     return div()
       .relative()
       .flex_none()
       .w(w)
       .h(h)
       .child(image(this.look(cls, frame, colour)).w(w).h(h))
-      .when(Boolean(top), (el) => el.child(div().absolute().left(0).top(0).child(image(`${ART}/${top}${frame}.png`).w(w).h(h))));
+      .when(Boolean(top), (el) => el.child(div().absolute().left(0).top(0).child(image(src(top)).w(w).h(h))));
   }
 
   // Starts the attack clock if it is stopped and anyone is ready to attack.
@@ -580,7 +588,7 @@ export default class RaidParty extends View {
     const phase = this.phaseOf(who.key);
     const flying = phase === 2 || phase === 3;
     const hit = this.hitOf(who.key, this.rhythm[who.key]?.seed ?? 0, W, kind);
-    const art = (name, w, h) => image(`${ART}/${name}.png`).w(w).h(h);
+    const art = (name, w, h) => image(src(name)).w(w).h(h);
     const pop = (id, name, w, h, at, on) =>
       div()
         .id(`idle-rpg-${id}-${who.key}`)
@@ -603,16 +611,16 @@ export default class RaidParty extends View {
     const from = (dx, dy) => ({ x: s.x + d * dx, y: s.y - dy });
 
     // the warrior swings its own sword; only the slash is extra
-    if (c === "warrior") return [pop("slash", `slash-${side}`, 32, 44, from(62, 24), phase === 2)];
-    if (c === "archer") return [shot(`arrow-${side}`, 44, 20, from(40, 22)), pop("hit", "spark", 20, 20, hit, phase === 4)];
-    if (c === "wizard") return [shot(`fireball-${side}`, 40, 32, from(46, 26)), pop("hit", "burst", 44, 44, hit, phase === 4)];
+    if (c === "warrior") return [pop("slash", `attacks/slash/${side}.png`, 32, 44, from(62, 24), phase === 2)];
+    if (c === "archer") return [shot(`attacks/arrow/${side}.png`, 44, 20, from(40, 22)), pop("hit", "status/spark.png", 20, 20, hit, phase === 4)];
+    if (c === "wizard") return [shot(`attacks/fireball/${side}.png`, 40, 32, from(46, 26)), pop("hit", "attacks/burst.png", 44, 44, hit, phase === 4)];
     // healer: the potion is lobbed, rising for the first half and falling for the second
     const lob = (el) =>
       el
         .id(`idle-rpg-lob-${who.key}`)
         .top(phase === 2 ? -44 : 0)
         .transition("top", { duration: FLIGHT / 2, easing: phase === 2 ? "ease-out" : "ease-in" });
-    return [shot("potion", 28, 36, from(24, 40), lob), pop("hit", "splash", 52, 32, hit, phase === 4)];
+    return [shot("attacks/potion.png", 28, 36, from(24, 40), lob), pop("hit", "attacks/splash.png", 52, 32, hit, phase === 4)];
   }
 
   // The monster and its health bar. `hits` is how many agents are attacking it.
@@ -647,16 +655,16 @@ export default class RaidParty extends View {
             .id(`idle-rpg-roar-fade-${this.howls}-${i}`)
             .opacity(on ? 0 : 1)
             .transition("opacity", { duration: 450, delay: delay + 300, easing: "ease-in" })
-            .child(image(`${ART}/roar-wave.png`).w(28).h(56)),
+            .child(image(src(monsterArt("dragon", "roar/wave"))).w(28).h(56)),
         );
     };
-    // one piece of the monster's art, laid over the whole picture's box
+    // one piece of the monster's art (one of MONSTER_ART in rules.js), laid over the whole picture's box
     const layer = (part) =>
       div()
         .absolute()
         .left(0)
         .top(0)
-        .child(image(`${ART}/monster-${m.kind}${part ? `-${part}` : ""}.png`).w(kind.w).h(kind.h));
+        .child(image(src(monsterArt(m.kind, part))).w(kind.w).h(kind.h));
     const tone = m.hp > m.maxHp / 2 ? "#4cd47b" : m.hp > m.maxHp / 5 ? "#ffd166" : "#ff5d5d";
     return [
       div()
@@ -683,8 +691,8 @@ export default class RaidParty extends View {
             .top(this.struck && hurt ? -4 : 0)
             .transition("top", { duration: 90, easing: "ease-out" })
             .when(m.kind === "dragon", (el) => el.child(layer("tail").loop("top", { from: 0, to: 5, period: 2600 })))
-            .child(layer(roaring ? "2" : m.kind === "slime" ? "base" : m.kind === "dragon" ? (howl === "roar" ? "roar" : howl ? "rear" : "body") : null))
-            .when(howl === "roar", (el) => el.child(layer("roar-top").loop("left", { from: -2, to: 2, period: 140, easing: "linear" })))
+            .child(layer(roaring ? "roar/roar" : m.kind === "slime" ? "base" : m.kind === "dragon" ? (howl === "roar" ? "roar/roar" : howl ? "roar/rear" : "body") : "idle"))
+            .when(howl === "roar", (el) => el.child(layer("roar/top").loop("left", { from: -2, to: 2, period: 140, easing: "linear" })))
             .when(Boolean(howl), (el) => el.children([0, 1, 2].map(ring)))
             .when(!roaring && !howl, (el) =>
               el.child(
@@ -791,7 +799,7 @@ export default class RaidParty extends View {
     const glide = { duration: TICK_MS, easing: "linear" };
     const fade = (el, id, o) => el.id(id).opacity(o).transition("opacity", glide);
     const tiles = (art, w, h, place) =>
-      Array.from({ length: Math.ceil(W / w) }, (_, i) => place(div().absolute().left(i * w)).child(image(`${ART}/${art}.png`).w(w).h(h)));
+      Array.from({ length: Math.ceil(W / w) }, (_, i) => place(div().absolute().left(i * w)).child(image(src(art)).w(w).h(h)));
     const horizon = FLOOR_H + WALL_H;
     const sky = Math.max(40, this.wallH - WALL_H); // the room above the wall
 
@@ -804,7 +812,7 @@ export default class RaidParty extends View {
         .top(Math.round(-Math.sin(a) * clamp(sky - 34, 30, 130)) - 20)
         .transition("left", glide)
         .transition("top", glide)
-        .child(image(`${ART}/${art}.png`).w(40).h(40));
+        .child(image(src(art)).w(40).h(40));
 
     // A cloud that leaves on the right comes back on the left as a new element,
     // so it does not glide back across the sky.
@@ -820,23 +828,23 @@ export default class RaidParty extends View {
         .top(-Math.round(c.up * Math.max(0, sky - c.h - 6)) - c.h - 4)
         .opacity(0.3 + 0.7 * day)
         .transition("left", glide)
-        .child(image(`${ART}/cloud-${c.art}.png`).w(c.w).h(c.h));
+        .child(image(src(c.art)).w(c.w).h(c.h));
     });
 
     const fittings = [];
     for (let x = 256; x < W - 120; x += 384) {
-      fittings.push(div().absolute().left(x).bottom(FLOOR_H + 2).child(image(`${ART}/banner.png`).w(40).h(56)));
+      fittings.push(div().absolute().left(x).bottom(FLOOR_H + 2).child(image(src("scene/banner.png")).w(40).h(56)));
       if (x + 232 > W - 60) continue;
       fittings.push(
         fade(div().absolute().left(x + 188).bottom(FLOOR_H + 30).w(48).h(48), `idle-rpg-glow-${x}`, 0.25 + 0.75 * night).child(
           div().size_full().rounded(24).bg("#ffb34750").loop("opacity", { from: 0.55, to: 1, period: 640 }),
         ),
       );
-      fittings.push(div().absolute().left(x + 200).bottom(FLOOR_H + 8).child(image(`${ART}/torch.png`).w(24).h(48)));
+      fittings.push(div().absolute().left(x + 200).bottom(FLOOR_H + 8).child(image(src("scene/torch.png")).w(24).h(48)));
     }
 
     return [
-      fade(div().absolute().left(0).top(0).w(W).h(128), "idle-rpg-stars", night).children(tiles("stars", 256, 128, (el) => el.top(0))),
+      fade(div().absolute().left(0).top(0).w(W).h(128), "idle-rpg-stars", night).children(tiles("scene/stars.png", 256, 128, (el) => el.top(0))),
       fade(div().absolute().left(0).top(0).bottom(0).w(W).bg(DAY), "idle-rpg-day", day),
       ...[0.75, 0.6, 0.45, 0.3, 0.15].map((o, i) =>
         fade(div().absolute().left(0).bottom(horizon - 8 + i * 20).w(W).h(20).bg(DUSK), `idle-rpg-dusk-${i}`, dusk * o),
@@ -847,12 +855,12 @@ export default class RaidParty extends View {
         .bottom(horizon)
         .w(W)
         .h(1)
-        .child(orb("idle-rpg-sun", "sun", turn))
-        .child(orb("idle-rpg-moon", "moon", turn + Math.PI))
+        .child(orb("idle-rpg-sun", "scene/sun.png", turn))
+        .child(orb("idle-rpg-moon", "scene/moon.png", turn + Math.PI))
         .children(clouds),
-      ...tiles("mountains", 256, 80, (el) => el.bottom(horizon - 24)),
+      ...tiles("scene/mountains.png", 256, 80, (el) => el.bottom(horizon - 24)),
       fade(div().absolute().left(0).top(0).bottom(FLOOR_H).w(W).bg(TINT), "idle-rpg-night-sky", night * 0.5),
-      ...tiles("wall", 128, WALL_H, (el) => el.bottom(FLOOR_H)),
+      ...tiles("scene/wall.png", 128, WALL_H, (el) => el.bottom(FLOOR_H)),
       ...fittings,
     ];
   }
@@ -860,7 +868,7 @@ export default class RaidParty extends View {
   // The status icon over an agent's head, in pixel art. Every motion here is a
   // native loop, so none of it re-renders the view.
   bubble(a, x, y) {
-    const art = (name, w, h) => image(`${ART}/${name}.png`).w(w).h(h);
+    const art = (name, w, h) => image(src(name)).w(w).h(h);
     if (a.status === "working") {
       // Two swords swing together and apart; a spark flashes as they meet.
       const swing = (from, to) => ({ from, to, period: 520, easing: "ease-in" });
@@ -870,13 +878,13 @@ export default class RaidParty extends View {
         .top(y - 104)
         .w(60)
         .h(40)
-        .child(div().absolute().left(0).top(4).loop("left", swing(0, 7)).child(art("sword-l", 36, 36)))
-        .child(div().absolute().left(24).top(4).loop("left", swing(24, 17)).child(art("sword-r", 36, 36)))
-        .child(div().absolute().left(20).top(0).loop("opacity", swing(0, 1)).child(art("spark", 20, 20)));
+        .child(div().absolute().left(0).top(4).loop("left", swing(0, 7)).child(art("status/sword-l.png", 36, 36)))
+        .child(div().absolute().left(24).top(4).loop("left", swing(24, 17)).child(art("status/sword-r.png", 36, 36)))
+        .child(div().absolute().left(20).top(0).loop("opacity", swing(0, 1)).child(art("status/spark.png", 20, 20)));
     }
     if (a.status === "blocked")
-      return div().absolute().left(x - 18).top(y - 108).loop("top", { from: y - 108, to: y - 114, period: 560 }).child(art("alert", 36, 40));
-    if (a.status === "done") return div().absolute().left(x - 18).top(y - 108).child(art("done", 36, 40));
+      return div().absolute().left(x - 18).top(y - 108).loop("top", { from: y - 108, to: y - 114, period: 560 }).child(art("status/alert.png", 36, 40));
+    if (a.status === "done") return div().absolute().left(x - 18).top(y - 108).child(art("status/done.png", 36, 40));
     // idle: three z's drift up and take turns fading
     const doze = (from, to) => ({ from, to, period: 2400 });
     return div()
@@ -886,9 +894,9 @@ export default class RaidParty extends View {
       .w(64)
       .h(60)
       .loop("top", { from: y - 116, to: y - 120, period: 2400 })
-      .child(div().absolute().left(0).top(40).loop("opacity", doze(1, 0.25)).child(art("z-1", 20, 20)))
-      .child(div().absolute().left(16).top(20).loop("opacity", doze(0.5, 1)).child(art("z-2", 24, 24)))
-      .child(div().absolute().left(36).top(0).loop("opacity", doze(0.25, 1)).child(art("z-3", 28, 28)));
+      .child(div().absolute().left(0).top(40).loop("opacity", doze(1, 0.25)).child(art("status/z-1.png", 20, 20)))
+      .child(div().absolute().left(16).top(20).loop("opacity", doze(0.5, 1)).child(art("status/z-2.png", 24, 24)))
+      .child(div().absolute().left(36).top(0).loop("opacity", doze(0.25, 1)).child(art("status/z-3.png", 28, 28)));
   }
 
   // An agent at rest: shadow, sprite, bubble, name. Returns elements for the floor.
@@ -901,10 +909,10 @@ export default class RaidParty extends View {
     // phase 1 and strikes on 2 and 3.
     const dir = this.at[a.address].dir;
     const phase = this.phaseOf(a.address);
-    const frame = !fighting || !(this.monster?.hp > 0) ? "f" : phase === 1 ? "a1" : phase === 2 || phase === 3 ? "a2" : "f";
+    const frame = !fighting || !(this.monster?.hp > 0) ? "stance" : phase === 1 ? "windup" : phase === 2 || phase === 3 ? "strike" : "stance";
     const pose = this.fighting
-      ? div().relative().w(72).h(72).child(div().absolute().left(dir > 0 ? 0 : -24).top(0).child(this.sprite(c, `-${frame}-${dir > 0 ? "r" : "l"}`, 96, 72)))
-      : this.sprite(c, "", 72, 72);
+      ? div().relative().w(72).h(72).child(div().absolute().left(dir > 0 ? 0 : -24).top(0).child(this.sprite(c, `${frame}/${dir > 0 ? "r" : "l"}`, 96, 72)))
+      : this.sprite(c, "stand", 72, 72);
     const where = `${a.space_name} · ${a.tab_name}`;
     const open = this.card === a.address;
     return [
@@ -1037,8 +1045,8 @@ export default class RaidParty extends View {
   // motion is a native loop, so it never re-renders the view. It is scenery:
   // a press on it walks you there like one on the bare floor.
   campfire(x) {
-    const art = (name) => image(`${ART}/${name}.png`).w(FIRE_W).h(FIRE_H);
-    const flame = (n, from, to, period) => div().absolute().left(0).top(0).loop("opacity", { from, to, period }).child(art(`campfire-${n}`));
+    const art = (name) => image(src(name)).w(FIRE_W).h(FIRE_H);
+    const flame = (n, from, to, period) => div().absolute().left(0).top(0).loop("opacity", { from, to, period }).child(art(`campfire/flame-${n}.png`));
     // a spark: one art pixel, drifting up and down over the flames as it fades in and out
     const spark = (left, from, to, period, blink) =>
       div()
@@ -1067,7 +1075,7 @@ export default class RaidParty extends View {
         .top(FIRE_Y - FIRE_H)
         .w(FIRE_W)
         .h(FIRE_H)
-        .child(art("campfire"))
+        .child(art("campfire/base.png"))
         .child(flame(1, 0, 1, 520))
         .child(flame(2, 1, 0, 740))
         .child(flame(3, 0.4, 1, 380))
@@ -1090,14 +1098,14 @@ export default class RaidParty extends View {
     const RISE = 80;
     const H = RISE + WALL_H + FLOOR_H;
     const cut = fire === null ? null : [fire - 112, fire + 112];
-    // the picture `dark-<art>` laid at `left`, `w` wide, showing only from `from` to `to`
+    // the picture light/<art>.png laid at `left`, `w` wide, showing only from `from` to `to`
     const piece = (left, w, art, from = left, to = left + w) =>
       from === left && to === left + w
         ? div()
             .absolute()
             .left(left)
             .top(0)
-            .child(image(`${ART}/dark-${art}.png`).w(w).h(H))
+            .child(image(src(`light/${art}.png`)).w(w).h(H))
         : div()
             .absolute()
             .left(from)
@@ -1110,7 +1118,7 @@ export default class RaidParty extends View {
                 .absolute()
                 .left(left - from)
                 .top(0)
-                .child(image(`${ART}/dark-${art}.png`).w(w).h(H)),
+                .child(image(src(`light/${art}.png`)).w(w).h(H)),
             );
     const pieces = [];
     const lay = (left, w, art) => {
@@ -1145,7 +1153,7 @@ export default class RaidParty extends View {
       .absolute()
       .left(d.x - 44)
       .top(d.y - 78)
-      .child(this.sprite(c, `-rag-${tilt}`, 88, 88));
+      .child(this.sprite(c, `rag/${tilt}`, 88, 88));
   }
 
   you_() {
@@ -1182,9 +1190,9 @@ export default class RaidParty extends View {
                   .absolute()
                   .left(this.youDir > 0 ? 0 : -24)
                   .top(0)
-                  .child(this.sprite(c, `-${!this.youFights ? "f" : [0, "a1", "a2", "a2", 0][this.phaseOf(YOU)] || "f"}-${this.youDir > 0 ? "r" : "l"}`, 96, 72)),
+                  .child(this.sprite(c, `${!this.youFights ? "stance" : [0, "windup", "strike", "strike", 0][this.phaseOf(YOU)] || "stance"}/${this.youDir > 0 ? "r" : "l"}`, 96, 72)),
               )
-          : this.sprite(c, this.walking ? (this.step ? "-walk-r" : "-walk-l") : "", 72, 72),
+          : this.sprite(c, this.walking ? (this.step ? "walk/r" : "walk/l") : "stand", 72, 72),
       )
       .child(div().px(6).rounded(7).bg(this.card === YOU ? "#00000080" : "#00000040").text_size(10).font_semibold().text_color(CREAM).child("You"));
   }
@@ -1216,7 +1224,7 @@ export default class RaidParty extends View {
             .items_center()
             .font_semibold()
             .text_color(GOLD)
-            .child(image(`${ART}/i-star.png`).w(18).h(18))
+            .child(image(src("icons/star.png")).w(18).h(18))
             .child(div().child(String(spare))),
         ),
       );
@@ -1244,7 +1252,7 @@ export default class RaidParty extends View {
               this.save();
               cx.notify();
             })
-            .child(this.sprite(c, "", 36, 36))
+            .child(this.sprite(c, "stand", 36, 36))
             .child(div().text_size(9).font_semibold().text_color(GOLD).child(`Lv ${classLevel(this.progress.xp[c]).level}`)),
         ),
       );
@@ -1270,7 +1278,7 @@ export default class RaidParty extends View {
           .absolute()
           .left(-26)
           .top(hatArt(this.sprites[key], equipped(this.progress, this.sprites[key], "hat")) ? -4 : -10)
-          .child(this.sprite(this.sprites[key], "", 108, 108)),
+          .child(this.sprite(this.sprites[key], "stand", 108, 108)),
       )
       .child(
         div()
@@ -1288,7 +1296,7 @@ export default class RaidParty extends View {
             this.picking = !this.picking;
             cx.notify();
           })
-          .child(div().absolute().left(1).top(1).child(image(`${ART}/wrench.png`).w(16).h(16))),
+          .child(div().absolute().left(1).top(1).child(image(src("icons/wrench.png")).w(16).h(16))),
       );
   }
 
@@ -1463,11 +1471,11 @@ export default class RaidParty extends View {
       h_flex()
         .gap(3)
         .items_center()
-        .child(image(`${ART}/${art}.png`).w(w).h(h))
+        .child(image(src(art)).w(w).h(h))
         .child(div().child(String(n)));
     const scenery = this.scenery(W); // also works out how dark it is
     const boards = Array.from({ length: Math.ceil(W / 128) }, (_, i) =>
-      div().absolute().left(i * 128).top(0).child(image(`${ART}/floor.png`).w(128).h(FLOOR_H)),
+      div().absolute().left(i * 128).top(0).child(image(src("scene/floor.png")).w(128).h(FLOOR_H)),
     );
     const carried = this.drag && list.find((a) => a.address === this.drag.address);
     const hudTop = W < HUD_NARROW ? 54 : 8; // from the top of the scene: beside the sign, or under it
@@ -1487,8 +1495,8 @@ export default class RaidParty extends View {
           .h(FLOOR_H)
           .children(boards)
           // the table and the barrel stand at the back, clear of the monster's corner
-          .child(div().absolute().left(12).top(-34).child(image(`${ART}/table.png`).w(112).h(56)))
-          .child(div().absolute().left(136).top(-30).child(image(`${ART}/barrel.png`).w(48).h(52)))
+          .child(div().absolute().left(12).top(-34).child(image(src("stations/table/idle.png")).w(112).h(56)))
+          .child(div().absolute().left(136).top(-30).child(image(src("scene/barrel.png")).w(48).h(52)))
           .when(!this.battle, (el) => el.children(this.stations()))
           .children(actors.flatMap((p) => p.draw()))
           .child(this.gloom(W, fire))
@@ -1609,7 +1617,7 @@ export default class RaidParty extends View {
                     el
                       .child(
                         // the kill count opens the codex
-                        stat("i-skull", 18, 18, slain)
+                        stat("icons/skull.png", 18, 18, slain)
                           .id("idle-rpg-slain")
                           .px(3)
                           .rounded(4)
@@ -1624,7 +1632,7 @@ export default class RaidParty extends View {
                       )
                       .child(
                         // the gold opens the shop, on your own class
-                        stat("i-coin", 18, 18, gold)
+                        stat("icons/coin.png", 18, 18, gold)
                           .id("idle-rpg-gold")
                           .px(3)
                           .rounded(4)
@@ -1642,7 +1650,7 @@ export default class RaidParty extends View {
                   // opens the skills panel; gold while there are some, dim when not
                   .when(earned, (el) =>
                     el.child(
-                      stat("i-star", 18, 18, spare)
+                      stat("icons/star.png", 18, 18, spare)
                         .id("idle-rpg-points")
                         .px(3)
                         .rounded(4)
@@ -1711,7 +1719,7 @@ export default class RaidParty extends View {
         .w(w)
         .h(h)
         .tooltip(`${STATUS[status][0]}: ${n}`)
-        .child(image(`${ART}/${art}.png`).w(w).h(h))
+        .child(image(src(art)).w(w).h(h))
         .child(div().absolute().left(w - textW(count, 2) + 4).top(h - GLYPH_H * 2 + 4).child(pixelText(count, "white", 2)));
     };
     return h_flex()
@@ -1742,7 +1750,7 @@ export default class RaidParty extends View {
             this.openSettings(!this.settingsOpen);
             cx.notify();
           })
-          .child(image(`${ART}/i-gear.png`).w(30).h(30)),
+          .child(image(src("icons/gear.png")).w(30).h(30)),
       );
   }
 
@@ -1817,7 +1825,7 @@ export default class RaidParty extends View {
         h_flex()
           .gap(6)
           .items_center()
-          .child(image(`${ART}/i-gear.png`).w(20).h(20))
+          .child(image(src("icons/gear.png")).w(20).h(20))
           .child(div().flex_1().text_size(12).font_semibold().text_color("#ffffff").child("Settings"))
           .child(
             div()
@@ -1865,7 +1873,7 @@ export default class RaidParty extends View {
     const spare = CLASSES.reduce((sum, c) => sum + pointsLeft(this.progress, c), 0);
     // Under the pointer a station shows it can be used, plainly enough for
     // broad daylight and in the scene's own style: its picture gains a white
-    // pixel outline (the "-hot" pictures) and hops up a pixel of art, a white
+    // pixel outline (each station's "hot" picture) and hops up a pixel of art, a white
     // arrow bobs over it, and its name goes white on a darker pill.
     // `inside(hot)` is what hops; `still(hot)` stays put behind it
     const station = (id, left, top, w, h, name, act, inside, still = () => []) => {
@@ -1923,7 +1931,7 @@ export default class RaidParty extends View {
               .left(w / 2 - 14)
               .top(-38)
               .loop("top", { from: -38, to: -30, period: 420 })
-              .child(image(`${ART}/arrow.png`).w(28).h(20)),
+              .child(image(src("stations/arrow.png")).w(28).h(20)),
           ),
         );
     };
@@ -1933,7 +1941,7 @@ export default class RaidParty extends View {
         .absolute()
         .left(hot ? left - 4 : left)
         .top(hot ? top - 4 : top)
-        .child(image(`${ART}/${name}${hot ? "-hot" : ""}.png`).w(hot ? w + 8 : w).h(hot ? h + 8 : h));
+        .child(image(src(`stations/${name}/${hot ? "hot" : "idle"}.png`)).w(hot ? w + 8 : w).h(hot ? h + 8 : h));
     return [
       // over the table that is always there, with the book lying on it
       station(
@@ -2002,7 +2010,7 @@ export default class RaidParty extends View {
         h_flex()
           .gap(6)
           .items_center()
-          .child(image(`${ART}/i-skull.png`).w(18).h(18))
+          .child(image(src("icons/skull.png")).w(18).h(18))
           .child(div().flex_1().text_size(12).font_semibold().text_color("#ffffff").child("Codex"))
           .child(
             div()
@@ -2023,7 +2031,7 @@ export default class RaidParty extends View {
         Object.entries(MONSTERS).map(([k, kind]) => {
           const n = kills[k] ?? 0;
           const scale = 24 / Math.max(kind.w, kind.h);
-          const picture = image(`${ART}/monster-${k}.png`)
+          const picture = image(src(monsterArt(k)))
             .w(Math.round(kind.w * scale))
             .h(Math.round(kind.h * scale));
           return line(div().opacity(n > 0 ? 1 : 0.25).child(picture), n > 0 ? kind.name : "???", n);
@@ -2083,7 +2091,7 @@ export default class RaidParty extends View {
           this.skillsOpen = c;
           cx.notify();
         })
-        .child(this.sprite(c, "", 24, 24))
+        .child(this.sprite(c, "stand", 24, 24))
         .child(
           h_flex()
             .gap(3)
@@ -2119,7 +2127,7 @@ export default class RaidParty extends View {
         h_flex()
           .gap(6)
           .items_center()
-          .child(image(`${ART}/i-star.png`).w(18).h(18))
+          .child(image(src("icons/star.png")).w(18).h(18))
           .child(div().flex_1().text_size(12).font_semibold().text_color("#ffffff").child("Skills"))
           .child(
             div()
@@ -2169,7 +2177,7 @@ export default class RaidParty extends View {
     const kind = SHOP_KINDS.includes(this.shopKind) ? this.shopKind : SHOP_KINDS[0];
     const items = catalogue(cls, kind);
     // each armour with the class's hat on, each hat over the class's armour
-    const preview = { armour: (it) => this.sprite(cls, "", 36, 36, it.id), hat: (it) => this.sprite(cls, "", 36, 36, undefined, it.id) };
+    const preview = { armour: (it) => this.sprite(cls, "stand", 36, 36, it.id), hat: (it) => this.sprite(cls, "stand", 36, 36, undefined, it.id) };
     const nav = (k) =>
       h_flex()
         .id(`idle-rpg-shop-kind-${k}`)
@@ -2187,7 +2195,7 @@ export default class RaidParty extends View {
           this.shopKind = k;
           cx.notify();
         })
-        .child(image(`${ART}/${SHOP_ICONS[k] ?? "i-coin"}.png`).w(18).h(18))
+        .child(image(src(SHOP_ICONS[k] ?? "icons/coin.png")).w(18).h(18))
         .child(div().text_size(10).font_semibold().text_color(CREAM).child(SHOP[k].name));
     const tab = (id, on, act, ...content) =>
       v_flex()
@@ -2252,7 +2260,7 @@ export default class RaidParty extends View {
         h_flex()
           .gap(6)
           .items_center()
-          .child(image(`${ART}/i-coin.png`).w(18).h(18))
+          .child(image(src("icons/coin.png")).w(18).h(18))
           .child(div().flex_1().text_size(12).font_semibold().text_color("#ffffff").child("Shop"))
           .child(div().font_semibold().text_color(GOLD).child(`${this.progress.gold} gold`))
           .child(
@@ -2298,7 +2306,7 @@ export default class RaidParty extends View {
                         `idle-rpg-shop-${c}`,
                         c === cls,
                         () => (this.shopOpen = c),
-                        this.sprite(c, "", 24, 24),
+                        this.sprite(c, "stand", 24, 24),
                         div().text_size(9).font_semibold().text_color(CREAM).child(capital(c)),
                       ),
                     ),

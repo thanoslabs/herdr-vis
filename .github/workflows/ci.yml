@@ -47,28 +47,58 @@ jobs:
 
       - name: Check the art
         run: |
-          # art/ holds exactly the files the generator writes, by name
+          # art/ holds exactly the files the generator writes, by path (folders and
+          # all), and nothing else: no stray file, folder entry or link
           out="$(mktemp -d)"
           python3 tools/idle-rpg-sprites.py "$out" > /dev/null
-          diff <(ls "$out") <(ls idle-rpg/mods/idle-rpg/art) || { echo "art/ and the generator disagree: regenerate it"; exit 1; }
+          diff <(cd "$out" && find . ! -type d | LC_ALL=C sort) <(cd idle-rpg/mods/idle-rpg/art && find . ! -type d | LC_ALL=C sort) \
+            || { echo "art/ and the generator disagree: regenerate it"; exit 1; }
+          diff <(cd "$out" && find . -type d | LC_ALL=C sort) <(cd idle-rpg/mods/idle-rpg/art && find . -type d | LC_ALL=C sort) \
+            || { echo "art/ has folders the generator does not write"; exit 1; }
           # and every picture the rules can ask for is there: each class in each
-          # colourway, and each hat's overlay for each class (no hat, no overlay)
+          # colourway, each hat's overlay for each class (no hat, no overlay), every
+          # monster's pictures and every character of the pixel font, each in every
+          # picture it has; plus every picture main.js names outright
           node --input-type=module <<'EOF'
-          import { existsSync } from "node:fs";
-          import { CLASSES, FRAMES, GLYPHS, GLYPH_COLOURS, catalogue, glyphArt, hatArt, lookArt } from "./idle-rpg/mods/idle-rpg/rules.js";
-          const art = (name) => FRAMES.map((f) => `idle-rpg/mods/idle-rpg/art/${name}${f}.png`);
-          const missing = [
+          import { existsSync, readFileSync } from "node:fs";
+          import { CLASSES, FRAMES, GLYPHS, GLYPH_COLOURS, KINDS, MONSTER_ART, catalogue, glyphArt, hatArt, lookArt, monsterArt } from "./idle-rpg/mods/idle-rpg/rules.js";
+          const dir = "idle-rpg/mods/idle-rpg";
+          const unknown = KINDS.filter((k) => !MONSTER_ART[k]);
+          if (unknown.length) {
+            console.error(`Kinds with no MONSTER_ART: ${unknown.join(", ")}`);
+            process.exit(1);
+          }
+          const paths = [
             ...CLASSES.flatMap((c) => [
-              ...catalogue(c, "armour").flatMap((it) => art(lookArt(c, it.id))),
-              ...catalogue(c, "hat").flatMap((it) => (hatArt(c, it.id) ? art(hatArt(c, it.id)) : [])),
+              ...catalogue(c, "armour").flatMap((it) => FRAMES.map((f) => lookArt(c, it.id, f))),
+              ...catalogue(c, "hat").flatMap((it) => (hatArt(c, it.id) ? FRAMES.map((f) => hatArt(c, it.id, f)) : [])),
             ]),
-            // the pixel font: every character in every colour
-            ...GLYPH_COLOURS.flatMap((c) => [...GLYPHS].map((ch) => `idle-rpg/mods/idle-rpg/art/${glyphArt(c, ch)}.png`)),
-          ].filter((p) => !existsSync(p));
+            ...KINDS.flatMap((k) => MONSTER_ART[k].map((part) => monsterArt(k, part))),
+            ...GLYPH_COLOURS.flatMap((c) => [...GLYPHS].map((ch) => glyphArt(c, ch))),
+            // the quoted "<folder>/<name>.png" paths in main.js (src("scene/wall.png") and so on)
+            ...[...readFileSync(`${dir}/main.js`, "utf8").matchAll(/"([a-z0-9-]+(?:\/[a-z0-9-]+)+\.png)"/g)].map((m) => m[1]),
+          ];
+          const main = readFileSync(`${dir}/main.js`, "utf8");
+          // a monster's part named in main.js (layer("top"), monsterArt(kind, "roar/wave")) is one some kind has
+          const parts = new Set(Object.values(MONSTER_ART).flat());
+          const strange = [...main.matchAll(/(?:layer\(|monsterArt\([^,()]+,\s*)"([^"]+)"/g)].map((m) => m[1]).filter((part) => !parts.has(part));
+          if (strange.length) {
+            console.error(`Monster parts no kind has: ${strange.join(", ")}`);
+            process.exit(1);
+          }
+          // and a path main.js builds (`light/${art}.png`) starts in a folder that is there
+          const built = [...main.matchAll(/`([a-z0-9-]+(?:\/[a-z0-9-]+)*)\/[^`/]*\$\{[^`]*\.png`/g)].map((m) => m[1]);
+          const lost = built.filter((folder) => !existsSync(`${dir}/art/${folder}`));
+          if (lost.length) {
+            console.error(`Paths built in folders art/ does not have: ${lost.join(", ")}`);
+            process.exit(1);
+          }
+          const missing = paths.filter((p) => typeof p !== "string" || !existsSync(`${dir}/art/${p}`));
           if (missing.length) {
             console.error(`Missing art:\n${missing.join("\n")}`);
             process.exit(1);
           }
+          console.log(`${new Set(paths).size} picture paths, ${built.length} built paths' folders checked`);
           EOF
 
       - name: Install into an empty Herdr home
@@ -78,3 +108,27 @@ jobs:
           test -f "$home/layouts/idle-rpg.json"
           test -f "$home/mods/idle-rpg/main.js"
           test -f "$home/mods/idle-rpg/rules.js"
+          test -f "$home/mods/idle-rpg/art/scene/wall.png"
+          diff -r idle-rpg/mods/idle-rpg/art "$home/mods/idle-rpg/art"
+
+      - name: Upgrade an install with stale art
+        run: |
+          # an older install: flat art files, a file Herdr wrote, and art/ holding a
+          # link to something outside the mod, which must survive
+          home="$(mktemp -d)"
+          outside="$(mktemp -d)"
+          touch "$outside/keep.png"
+          mkdir -p "$home/mods/idle-rpg/art"
+          touch "$home/mods/idle-rpg/art/wizard.png" "$home/mods/idle-rpg/art/glyph-white-1.png" "$home/mods/idle-rpg/jsconfig.json"
+          ln -s "$outside" "$home/mods/idle-rpg/art/elsewhere"
+          HERDR_APP_HOME="$home" ./install.sh idle-rpg
+          diff -r idle-rpg/mods/idle-rpg/art "$home/mods/idle-rpg/art"
+          test -f "$home/mods/idle-rpg/jsconfig.json"
+          test -f "$outside/keep.png"
+          # re-running over a symlinked art/ replaces the link, not what it points to
+          rm -rf "$home/mods/idle-rpg/art"
+          ln -s "$outside" "$home/mods/idle-rpg/art"
+          HERDR_APP_HOME="$home" ./install.sh idle-rpg
+          test ! -L "$home/mods/idle-rpg/art"
+          test -f "$outside/keep.png"
+          diff -r idle-rpg/mods/idle-rpg/art "$home/mods/idle-rpg/art"

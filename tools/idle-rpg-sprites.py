@@ -9,11 +9,37 @@
 #
 # Edit the grids below (one character per pixel, "." is empty) and re-run.
 # Everything is drawn at 8 image pixels per art pixel and shown at 4.
+#
+# The pictures go in folders by what they show, then by what it is doing, with
+# short names inside (the paths in mods/idle-rpg/rules.js and main.js follow it):
+#   scene/      the backdrop and props: wall, floor, mountains, stars, sun, moon,
+#               cloud-a, cloud-b, banner, torch, barrel
+#   classes/    <class>/<look>/stand, walk/{l,r}, rag/{c,l,r}, and the fighting
+#               poses stance/, windup/, strike/ {l,r}; <look> is "default" or a
+#               colourway's id
+#   hats/       <hat>/<class>/ the same pictures as a class, to lay over them
+#   attacks/    arrow/, fireball/, slash/ {l,r}; burst, potion, splash
+#   monsters/   <kind>/ idle (the whole picture), blink, the pieces that move
+#               (top, base, body, tail), and roar/ for the ogre and dragon
+#   stations/   <station>/{idle,hot}, and the arrow over the one under the pointer
+#   campfire/   base, flame-1 to flame-3
+#   light/      the night's darkness: candle, torch, fill, fire-0 to fire-23
+#   status/     over an agent's head: alert, done, z-1 to z-3, sword-l, sword-r, spark
+#   icons/      the sign's, the shop's and the settings': swords, sleep, skull,
+#               coin, star, armour, hat, gear, and the card's wrench
+#   font/       <colour>/<character>, the pixel font
 import math, os, struct, sys, zlib
 if len(sys.argv) != 2:
     sys.exit("usage: idle-rpg-sprites.py <output folder>")
 out = sys.argv[1]
 os.makedirs(out, exist_ok=True)
+
+def write(name, data):
+    # `name` is a path under the output folder ("scene/wall.png"); its folders are made as needed
+    path = os.path.join(out, *name.split("/"))
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "wb") as f:
+        f.write(data)
 OUTLINE = "#141a26"
 COMMON = {"s": "#f2c9a0", "k": "#1b2233"}
 SPR = {
@@ -92,7 +118,7 @@ SPR = {
 }
 
 # Colourways sold in the shop: each class's default (the palette above, drawn
-# as <class>*.png) and three more, drawn as <class>-<id>*.png by swapping
+# into classes/<class>/default/) and three more, drawn into classes/<class>/<id>/ by swapping
 # palette entries over the default's (clothing, armour, hair, trim; never skin,
 # eyes or the outline). The ids, in this order, must match COLOUR_NAMES in
 # mods/idle-rpg/rules.js, which names them (and COLOUR_PRICES prices them).
@@ -118,13 +144,13 @@ LOOKS = {
     "dusk":    {"n":"#8a56c2","N":"#5e3890","p":"#6fdc9a","q":"#c08a4a"},
 },
 }
-# a look's id follows the class in every file name, so it must not read as a frame
-# an id is one lower-case word, and not one a picture's name already uses, so no two files can share a name
-assert all(i.isalpha() and i.islower() and i not in {"walk", "rag", "f", "a", "l", "r", "c", "default"} for c in LOOKS for i in LOOKS[c])
+# a look's id names its folder, so it is one lower-case word, and not "default",
+# which is the default's folder, so no two looks can share one
+assert all(i.isalpha() and i.islower() and i != "default" for c in LOOKS for i in LOOKS[c])
 
 def looks(cls):
-    # (file name prefix, palette entries to swap): the default first, unchanged
-    return [(cls, {})] + [(f"{cls}-{look}", swaps) for look, swaps in LOOKS[cls].items()]
+    # (the look's folder, palette entries to swap): the default first, unchanged
+    return [(f"classes/{cls}/default", {})] + [(f"classes/{cls}/{look}", swaps) for look, swaps in LOOKS[cls].items()]
 
 def canvas(rows, size, pad, dx=lambda y: 0):
     g = [[None] * size for _ in range(size)]
@@ -167,20 +193,20 @@ for cls, (base, rows) in SPR.items():
     assert len(rows) == 16 and all(len(r) == 16 for r in rows), (cls, [len(r) for r in rows])
     for name, swaps in looks(cls):                              # every colourway, the default first
         pal = {**COMMON, **base, **swaps, "#": OUTLINE}
-        w = lambda n, g: open(os.path.join(out, n), "wb").write(png(outlined(g), pal))
-        w(f"{name}.png", canvas(rows, 18, 1))                   # 16x16 art, 1px margin for the outline
+        w = lambda n, g: write(n, png(outlined(g), pal))
+        w(f"{name}/stand.png", canvas(rows, 18, 1))             # 16x16 art, 1px margin for the outline
         for tag, side in (("l", -1), ("r", 1)):                 # lean a pixel, other foot lifted
-            w(f"{name}-walk-{tag}.png", canvas(lift(rows, side), 18, 1, lambda y: side if y < 14 else 0))
-        w(f"{name}-rag-c.png", canvas(rows, 22, 3))             # dangling: straight, or sheared each way
+            w(f"{name}/walk/{tag}.png", canvas(lift(rows, side), 18, 1, lambda y: side if y < 14 else 0))
+        w(f"{name}/rag/c.png", canvas(rows, 22, 3))             # dangling: straight, or sheared each way
         for tag, side in (("l", -1), ("r", 1)):
-            w(f"{name}-rag-{tag}.png", canvas(rows, 22, 3, lambda y: side * round(y * 0.2)))
+            w(f"{name}/rag/{tag}.png", canvas(rows, 22, 3, lambda y: side * round(y * 0.2)))
 
 
 # ---- Scenery ---------------------------------------------------------------
 import random
 
 def save(name, g, pal={}):
-    open(os.path.join(out, name), "wb").write(png(g, pal))
+    write(name, png(g, pal))
 
 def chars(rows, pal):
     width = max(len(r) for r in rows)
@@ -265,14 +291,14 @@ def stars():
         g[rnd.randrange(32)][rnd.randrange(64)] = rnd.choice(["#ffffff", "#ffffff", "#ffe9a8", "#bcd3ff"])
     return g
 
-save("wall.png", wall())
-save("floor.png", floor())
-save("mountains.png", mountains())
-save("stars.png", stars())
-save("sun.png", disc(10, "#ffd75e", [(x, y, "#fff3b0") for x in range(3, 7) for y in range(3, 7)]))
-save("moon.png", disc(10, "#e8eef7", [(3, 3, "#b9c6d8"), (4, 3, "#b9c6d8"), (6, 6, "#b9c6d8"), (3, 7, "#b9c6d8"), (7, 2, "#b9c6d8")]))
+save("scene/wall.png", wall())
+save("scene/floor.png", floor())
+save("scene/mountains.png", mountains())
+save("scene/stars.png", stars())
+save("scene/sun.png", disc(10, "#ffd75e", [(x, y, "#fff3b0") for x in range(3, 7) for y in range(3, 7)]))
+save("scene/moon.png", disc(10, "#e8eef7", [(3, 3, "#b9c6d8"), (4, 3, "#b9c6d8"), (6, 6, "#b9c6d8"), (3, 7, "#b9c6d8"), (7, 2, "#b9c6d8")]))
 CLOUD = {"w": "#ffffff", "s": "#cfe0f2"}
-save("cloud-a.png", chars([
+save("scene/cloud-a.png", chars([
     "......wwwwww............",
     "....wwwwwwwwww...www....",
     "..wwwwwwwwwwwwwwwwwwww..",
@@ -281,14 +307,14 @@ save("cloud-a.png", chars([
     "wsswwwwsssswwwwwsssswwws",
     ".ssssssssssssssssssssss.",
 ], CLOUD))
-save("cloud-b.png", chars([
+save("scene/cloud-b.png", chars([
     "....wwwww.......",
     "..wwwwwwwww.ww..",
     ".wwwwwwwwwwwwww.",
     "wwwswwwwsswwwwww",
     ".ssssssssssssss.",
 ], CLOUD))
-save("torch.png", chars([
+save("scene/torch.png", chars([
     "..y...",
     ".yoy..",
     ".yoo..",
@@ -302,7 +328,7 @@ save("torch.png", chars([
     "..b...",
     "..b...",
 ], {"y": "#ffe27a", "o": "#ff9d3c", "r": "#e2552f", "m": "#4a515c", "b": "#7a5230"}))
-save("banner.png", chars([
+save("scene/banner.png", chars([
     "bbbbbbbbbb",
     ".rrrrrrrr.",
     ".rrrrrrrr.",
@@ -335,10 +361,11 @@ TABLE = chars([
     ".ddd....................ddd.",
 ], {"c": "#f4ecd8", "g": "#9fd8e8", "p": "#c94040", "P": "#e86a6a", "y": "#ffe27a", "o": "#ff9d3c", "w": "#f4f7fb",
     "T": "#b98047", "t": "#9a6639", "d": "#6e4525"})
-save("table.png", TABLE)
+save("stations/table/idle.png", TABLE)
 # ---- Stations, on the rampart between raids: each opens one of the panels ----
-# Each also comes as "<name>-hot": the same picture inside a one-pixel white
-# outline (so one art pixel bigger on every side), shown under the pointer.
+# Each has a folder, stations/<name>/: "idle", the picture, and "hot", the same
+# picture inside a one-pixel white outline (so one art pixel bigger on every
+# side), shown under the pointer.
 def lit(g):
     h, w = len(g), len(g[0])
     big = [[None] * (w + 2) for _ in range(h + 2)]
@@ -353,10 +380,10 @@ def lit(g):
 
 def station(name, rows, pal):
     g = chars(rows, pal)
-    save(name + ".png", g)
-    save(name + "-hot.png", lit(g))
+    save(f"stations/{name}/idle.png", g)
+    save(f"stations/{name}/hot.png", lit(g))
 
-save("table-hot.png", lit(TABLE))                 # the codex is the whole table, and the book on it
+save("stations/table/hot.png", lit(TABLE))                 # the codex is the whole table, and the book on it
 station("book", [                                # the codex, lying on the table
     ".bbbbbb.",
     "bBBBBBBb",
@@ -409,7 +436,7 @@ station("dummy", [                               # the skills: a straw training 
     "...bbbbbb...",
     "..bbbbbbbb..",
 ], {"s": "#b89a62", "S": "#d9c08a", "b": "#7a5230", "y": "#c9a03c", "Y": "#e6c766", "r": "#c94040", "w": "#f4ecd8"})
-save("barrel.png", chars([
+save("scene/barrel.png", chars([
     "..tttttttt..",
     ".tTTTTTTTTt.",
     "mmmmmmmmmmmm",
@@ -426,9 +453,9 @@ save("barrel.png", chars([
 ], {"T": "#b98047", "t": "#9a6639", "d": "#6e4525", "m": "#4a515c"}))
 
 # ---- The campfire, in the middle of the floor between raids (scenery, not a
-# station). "campfire" is the ring of stones, the logs leaning together and the
+# station), in campfire/. "base" is the ring of stones, the logs leaning together and the
 # low heart of the flames, outlined like the sprites except the flames; it never
-# changes. "campfire-1" to "-3" are taller flames laid over it, each fading in
+# changes. "flame-1" to "-3" are taller flames laid over it, each fading in
 # and out on its own rhythm so the fire flickers. Their lower rows match the
 # heart's colours, so only the tongues change as they fade. The flames are the
 # torch's colours and, like the torch's, have no outline. 16x13, plus a pixel
@@ -456,7 +483,7 @@ FLAME_HEART = [
     ".....oyyyyo.....",
     "......oooo......",
 ]
-campfire("campfire.png", [
+campfire("campfire/base.png", [
     "",
     "",
     "",
@@ -491,9 +518,9 @@ for i, tongues in enumerate([
      ".....ryryor.....",
      "....royyWyor...."],
 ], 1):
-    campfire(f"campfire-{i}.png", tongues + FLAME_HEART[6:])
+    campfire(f"campfire/flame-{i}.png", tongues + FLAME_HEART[6:])
 
-save("wrench.png", chars([  # double-ended: an open jaw at each end
+save("icons/wrench.png", chars([  # the card's, to change class; double-ended: an open jaw at each end
     ".....w.w",
     ".....www",
     "....ww..",
@@ -504,7 +531,7 @@ save("wrench.png", chars([  # double-ended: an open jaw at each end
     "........",
 ], {"w": "#dbe7f3"}))
 
-# ---- Status icons, shown over an agent's head, outlined like the sprites ----
+# ---- Status icons (status/), shown over an agent's head, outlined like the sprites ----
 def icon(name, rows, pal):
     g = chars(rows, pal)
     h, w = len(g), len(g[0])
@@ -528,14 +555,14 @@ BLADE = [
     ".d.g...",
     "d......",
 ]
-icon("sword-l.png", BLADE, SWORD)                       # working: two of these clash
-icon("sword-r.png", [r[::-1] for r in BLADE], SWORD)
-save("spark.png", chars(["..y..", ".yWy.", "yWWWy", ".yWy.", "..y.."], {"y": "#ffe27a", "W": "#ffffff"}))
+icon("status/sword-l.png", BLADE, SWORD)                       # working: two of these clash
+icon("status/sword-r.png", [r[::-1] for r in BLADE], SWORD)
+save("status/spark.png", chars(["..y..", ".yWy.", "yWWWy", ".yWy.", "..y.."], {"y": "#ffe27a", "W": "#ffffff"}))
 Z = {"z": "#e6f0fa"}
-icon("z-1.png", ["zzz", ".z.", "zzz"], Z)                # idle: three of these rise
-icon("z-2.png", ["zzzz", "..z.", ".z..", "zzzz"], Z)
-icon("z-3.png", ["zzzzz", "...z.", "..z..", ".z...", "zzzzz"], Z)
-icon("alert.png", [                                     # blocked: it needs you
+icon("status/z-1.png", ["zzz", ".z.", "zzz"], Z)                # idle: three of these rise
+icon("status/z-2.png", ["zzzz", "..z.", ".z..", "zzzz"], Z)
+icon("status/z-3.png", ["zzzzz", "...z.", "..z..", ".z...", "zzzzz"], Z)
+icon("status/alert.png", [                                     # blocked: it needs you
     ".rrrrr.",
     "rrrwrrr",
     "rrrwrrr",
@@ -545,7 +572,7 @@ icon("alert.png", [                                     # blocked: it needs you
     ".rrrrr.",
     "..rr...",
 ], {"r": "#e2483f", "w": "#ffffff"})
-icon("done.png", [                                      # done: finished while you were away
+icon("status/done.png", [                                      # done: finished while you were away
     ".ggggg.",
     "ggggggg",
     "gggggwg",
@@ -556,7 +583,7 @@ icon("done.png", [                                      # done: finished while y
     "..gg...",
 ], {"g": "#3fbf6f", "w": "#ffffff"})
 
-# ---- Night: darkness laid over the wall, the floor and everyone on it, with a
+# ---- Night (light/): darkness laid over the wall, the floor and everyone on it, with a
 # pool of light left clear around a flame. The dark deepens away from the
 # flame in six even steps (rings, not a smooth blur) up to half strength, so
 # the far corners are dim, not black. 74 rows: 20 above the wall, where the dark
@@ -580,24 +607,24 @@ def dark(name, w, *lights):
     save(name, g)
 
 TORCH_LIGHT = (48.5, 4.5, 9, 40, 1.15)
-dark("dark-torch.png", 96, TORCH_LIGHT)                 # one torch's stretch of wall, the flame near the top
-dark("dark-candle.png", 68, (28.5, 9, 3, 24, 1.0))      # the left end, lit only by the candle on the table
-dark("dark-fill.png", 4)                                # no flame: stretched over whatever is left
+dark("light/torch.png", 96, TORCH_LIGHT)                 # one torch's stretch of wall, the flame near the top
+dark("light/candle.png", 68, (28.5, 9, 3, 24, 1.0))      # the left end, lit only by the candle on the table
+dark("light/fill.png", 4)                                # no flame: stretched over whatever is left
 # The campfire's stretch (between raids), 56 wide with the fire in the middle,
 # cut into the row of pictures wherever the fire stands. The torches' pools
 # reach into it, so it carries their light as well as its own. The torches'
 # pictures start 68 art px from the left and repeat every 96, and the fire
-# stands at 68 + 4n (16 screen px steps), so "dark-fire-<i>" is the stretch for
+# stands at 68 + 4n (16 screen px steps), so "fire-<i>" is the stretch for
 # a fire 4i art px into a torch's picture (i = n mod 24). The fire's own pool is
 # centred on its flames, just above the floor's back edge (its feet are 8 art
 # px into the floor), and lights the floor around it.
 FIRE_LIGHT = (28, 15, 5, 22, 1.25)
 for i in range(24):
     torches = [(TORCH_LIGHT[0] + 28 - 4 * i + 96 * k,) + TORCH_LIGHT[1:] for k in (-1, 0, 1)]
-    dark(f"dark-fire-{i}.png", 56, FIRE_LIGHT, *torches)
+    dark(f"light/fire-{i}.png", 56, FIRE_LIGHT, *torches)
 
-# ---- Sign icons: the counts on the sign, drawn small (shown at 2 screen px a pixel) ----
-icon("i-swords.png", [                                  # working
+# ---- Sign icons (icons/): the counts on the sign, drawn small (shown at 2 screen px a pixel) ----
+icon("icons/swords.png", [                                  # working
     "A.....A",
     ".A...A.",
     "..A.A..",
@@ -606,7 +633,7 @@ icon("i-swords.png", [                                  # working
     "..g.g..",
     ".d...d.",
 ], SWORD)
-icon("i-sleep.png", [                                   # resting
+icon("icons/sleep.png", [                                   # resting
     "zzzz...",
     "..z....",
     ".z.....",
@@ -615,7 +642,7 @@ icon("i-sleep.png", [                                   # resting
     ".....z.",
     "....zzz",
 ], Z)
-icon("i-skull.png", [                                   # slain
+icon("icons/skull.png", [                                   # slain
     ".wwwww.",
     "wwwwwww",
     "wkkwkkw",
@@ -624,8 +651,8 @@ icon("i-skull.png", [                                   # slain
     ".wwwww.",
     ".wkwkw.",
 ], {"w": "#ece6d6", "k": "#2a2433"})
-icon("arrow.png", ["wwwww", ".www.", "..w.."], {"w": "#ffffff"})  # bobs over the station under the pointer
-icon("i-armour.png", [                                  # the shop's armours
+icon("stations/arrow.png", ["wwwww", ".www.", "..w.."], {"w": "#ffffff"})  # bobs over the station under the pointer
+icon("icons/armour.png", [                                  # the shop's armours
     "aa...aa",
     "aAaaaAa",
     ".aAAAa.",
@@ -634,7 +661,7 @@ icon("i-armour.png", [                                  # the shop's armours
     ".aaAaa.",
     "..aaa..",
 ], SWORD)
-icon("i-hat.png", [                                     # the shop's hats
+icon("icons/hat.png", [                                     # the shop's hats
     "...b...",
     "..bb...",
     "..bBb..",
@@ -642,7 +669,7 @@ icon("i-hat.png", [                                     # the shop's hats
     ".ggggg.",
     "bbbbbbb",
 ], {"b": "#4a6fd0", "B": "#7fa0ee", "g": "#f2c14e"})
-icon("i-coin.png", [                                    # gold
+icon("icons/coin.png", [                                    # gold
     "..ggg..",
     ".gyyyg.",
     "gyyhyyg",
@@ -651,7 +678,7 @@ icon("i-coin.png", [                                    # gold
     ".gyyyg.",
     "..ggg..",
 ], {"g": "#c8891e", "y": "#f2c14e", "h": "#fff0b0"})
-icon("i-star.png", [                                    # skill points to spend
+icon("icons/star.png", [                                    # skill points to spend
     "...y...",
     "..yhy..",
     "yyyhyyy",
@@ -792,22 +819,23 @@ def dragon(name, part=None, lids=False, keep=None, pose=None):  # 80x64, facing 
     p.poly(h([(23, 12), (31, 3), (27, 14)]), BONE); p.poly(h([(19, 10), (24, 2), (22, 11)]), BONE)  # horns
     p.save(name, keep=keep)
 
-# Each monster's whole picture, the pieces that move on their own, and eyelids
-# to lay on top. Moving a piece over a still one never shows a ghost behind it,
+# Each monster's whole picture ("idle"), the pieces that move on their own,
+# eyelids to lay on top, and for the ogre and dragon a roar/ folder, all in
+# monsters/<kind>/. Moving a piece over a still one never shows a ghost behind it,
 # which easing between two whole frames did.
-slime("monster-slime.png"); slime("monster-slime-blink.png", lids=True)
-slime("monster-slime-base.png", keep=lambda x, y: y >= 19)          # the foot stays put (below the mouth)
-slime("monster-slime-top.png", keep=lambda x, y: y < 19)            # the dome sinks into it and rises
-ogre("monster-ogre.png"); ogre("monster-ogre-2.png", roar=True); ogre("monster-ogre-blink.png", lids=True)
-ogre("monster-ogre-top.png", keep=lambda x, y: y < 31)              # head, shoulders, arms: breathing
-dragon("monster-dragon.png"); dragon("monster-dragon-blink.png", lids=True)
-dragon("monster-dragon-tail.png", part="tail")                      # sways behind the body
-dragon("monster-dragon-body.png", part="body")
-dragon("monster-dragon-top.png", part="body", keep=lambda x, y: y < 38)  # head, neck, wings: breathing
-dragon("monster-dragon-rear.png", part="body", pose="rear")         # a roar: the wind-up, then
-dragon("monster-dragon-roar.png", part="body", pose="roar")         # the roar itself,
-dragon("monster-dragon-roar-top.png", part="body", pose="roar", keep=lambda x, y: y < 38)  # its upper body shaking
-icon("roar-wave.png", [                                 # rings out of the roaring dragon's mouth, to the left
+slime("monsters/slime/idle.png"); slime("monsters/slime/blink.png", lids=True)
+slime("monsters/slime/base.png", keep=lambda x, y: y >= 19)          # the foot stays put (below the mouth)
+slime("monsters/slime/top.png", keep=lambda x, y: y < 19)            # the dome sinks into it and rises
+ogre("monsters/ogre/idle.png"); ogre("monsters/ogre/roar/roar.png", roar=True); ogre("monsters/ogre/blink.png", lids=True)
+ogre("monsters/ogre/top.png", keep=lambda x, y: y < 31)              # head, shoulders, arms: breathing
+dragon("monsters/dragon/idle.png"); dragon("monsters/dragon/blink.png", lids=True)
+dragon("monsters/dragon/tail.png", part="tail")                      # sways behind the body
+dragon("monsters/dragon/body.png", part="body")
+dragon("monsters/dragon/top.png", part="body", keep=lambda x, y: y < 38)  # head, neck, wings: breathing
+dragon("monsters/dragon/roar/rear.png", part="body", pose="rear")         # a roar: the wind-up, then
+dragon("monsters/dragon/roar/roar.png", part="body", pose="roar")         # the roar itself,
+dragon("monsters/dragon/roar/top.png", part="body", pose="roar", keep=lambda x, y: y < 38)  # its upper body shaking
+icon("monsters/dragon/roar/wave.png", [                                 # rings out of the roaring dragon's mouth, to the left
     "...ww",
     "..w..",
     ".w...",
@@ -822,10 +850,11 @@ icon("roar-wave.png", [                                 # rings out of the roari
     "...ww",
 ], {"w": "#f2c98a"})
 
-# ---- Attacks (battle mode). "-r" flies or faces right, "-l" is its mirror. ----
+# ---- Attacks (battle mode), in attacks/. Those that fly or face a way have a
+# folder: "r" flies or faces right, "l" is its mirror. ----
 def both(name, rows, pal):
-    icon(f"{name}-r.png", rows, pal)
-    icon(f"{name}-l.png", [r[::-1] for r in rows], pal)
+    icon(f"attacks/{name}/r.png", rows, pal)
+    icon(f"attacks/{name}/l.png", [r[::-1] for r in rows], pal)
 
 both("arrow", [
     "f......A.",
@@ -851,7 +880,7 @@ both("slash", [
     "...WW.",
     ".WW...",
 ], {"W": "#ffffff"})
-icon("burst.png", [
+icon("attacks/burst.png", [
     "....y....",
     ".y.yoy.y.",
     "..yoWoy..",
@@ -862,7 +891,7 @@ icon("burst.png", [
     ".y.yoy.y.",
     "....y....",
 ], {"o": "#ff9d3c", "y": "#ffe27a", "W": "#ffffff"})
-icon("potion.png", [
+icon("attacks/potion.png", [
     ".bbb.",
     "..w..",
     ".www.",
@@ -871,7 +900,7 @@ icon("potion.png", [
     "wgggw",
     ".www.",
 ], {"b": "#7a5230", "w": "#dff3ee", "g": "#3fbf8f", "G": "#9af0cf"})
-icon("splash.png", [
+icon("attacks/splash.png", [
     "g.........g",
     "..g..g..g..",
     ".g.ggGgg.g.",
@@ -881,9 +910,10 @@ icon("splash.png", [
 ], {"g": "#3fbf8f", "G": "#9af0cf"})
 
 # ---- Fighting poses (battle mode), on a 22x16 grid so a weapon can reach out.
-# Drawn attacking to the right: "f" is the stance, "a1" the wind-up, "a2" the
-# strike. "-l" is the mirror image, for attacking to the left. Each pose is
-# drawn in every colourway, with the same swaps as the everyday sprite.
+# Drawn attacking to the right: "stance", "windup" and "strike", each a folder
+# in the look's; "r" faces right and "l" is the mirror image, for attacking to
+# the left. Each pose is drawn in every colourway, with the same swaps as the
+# everyday sprite.
 POSED = {}  # (class, tag): the pose's rows, kept for the hats (below)
 
 def pose(cls, tag, rows):
@@ -892,8 +922,8 @@ def pose(cls, tag, rows):
     POSED[(cls, tag)] = rows
     for name, swaps in looks(cls):
         pal = {**COMMON, **SPR[cls][0], **swaps, "#": OUTLINE}
-        icon(f"{name}-{tag}-r.png", rows, pal)
-        icon(f"{name}-{tag}-l.png", [r[::-1] for r in rows], pal)
+        icon(f"{name}/{tag}/r.png", rows, pal)
+        icon(f"{name}/{tag}/l.png", [r[::-1] for r in rows], pal)
 
 def swap(rows, changes):
     rows = list(rows)
@@ -906,14 +936,14 @@ def dots(rows, pixels):
     return ["".join(r) for r in g]
 
 W = SPR["warrior"][1]
-pose("warrior", "f", W)
-pose("warrior", "a1", swap(W, {            # sword held high
+pose("warrior", "stance", W)
+pose("warrior", "windup", swap(W, {            # sword held high
     0: ".............A..", 1: ".......pp....A..", 2: "......ppp....A..", 3: ".....aaaaaa..A..",
     4: "....aaAAAAaa.A..", 5: "....aaaaaaaa.A..", 6: "....askaaksaggg.", 7: "....assssssa.s..",
     8: ".....ssssss.a...", 9: "....AaaaaaaAa...", 10: ".uuuuaaaaaap....", 11: ".ugguaaaaaap....",
     12: ".ugguddgdddp....",
 }))
-pose("warrior", "a2", swap(W, {            # swung level, at full reach
+pose("warrior", "strike", swap(W, {            # swung level, at full reach
     2: "......ppp.......", 3: ".....aaaaaa.....", 4: "....aaAAAAaa....", 5: "....aaaaaaaa....",
     6: "....askaaksa....", 7: "....assssssa....", 8: ".....ssssss.....", 9: "....AaaaaaaA..g.",
     10: ".uuuuaaaaaapasgAAAAAAA", 11: ".ugguaaaaaap..g.", 12: ".ugguddgdddp....",
@@ -921,27 +951,27 @@ pose("warrior", "a2", swap(W, {            # swung level, at full reach
 
 A = SPR["archer"][1]
 SPR["archer"][0]["A"] = "#dfe6ee"  # arrowhead
-pose("archer", "f", A)
-pose("archer", "a1", swap(A, {             # bow drawn, arrow nocked
+pose("archer", "stance", A)
+pose("archer", "windup", swap(A, {             # bow drawn, arrow nocked
     5: "....ddssssdd..d.", 6: "....dskssksd..cd", 7: "....dssssssd..cd", 8: ".....ssssss..c..d",
     9: ".cc..nnnnnn..c..d", 10: ".qq.nndnnnnnsddddA", 11: ".qqsnnndnnnn.c..d", 12: ".qq.ddddgddd.c.d",
     13: "....NNNNNNNN..cd", 14: ".....dd..dd...d.",
 }))
-pose("archer", "a2", swap(A, {             # loosed
+pose("archer", "strike", swap(A, {             # loosed
     5: "....ddssssdd..d.", 6: "....dskssksd..cd", 7: "....dssssssd..cd", 8: ".....ssssss...c.d",
     9: ".cc..nnnnnn...c.d", 10: ".qq.nndnnnnns.c.d", 11: ".qqsnnndnnnn..c.d", 12: ".qq.ddddgddd..cd",
     13: "....NNNNNNNN..cd", 14: ".....dd..dd...d.",
 }))
 
 Z = SPR["wizard"][1]
-pose("wizard", "f", Z)
-pose("wizard", "a1", swap(Z, {             # staff raised
+pose("wizard", "stance", Z)
+pose("wizard", "windup", swap(Z, {             # staff raised
     0: ".............c..", 1: ".......hh...cCc.", 2: "......hhhh...c..", 3: "......hyhh...w..",
     4: ".....gggggg..w..", 5: "....hhhhhhhh.w..", 6: ".....ssssss..w..", 7: ".....skssks..w..",
     8: ".....bssssb..w..", 9: ".....bbbbbb.sw..", 10: "....rrbbbbrrrw..", 11: "...srrrbbrrr....",
     12: "....rrrRRrrr....", 13: "....gggggggg....", 14: ".....dd..dd.....",
 }))
-pose("wizard", "a2", swap(Z, {             # staff thrust out
+pose("wizard", "strike", swap(Z, {             # staff thrust out
     2: "......hhhh......", 3: "......hyhh......", 4: ".....gggggg.....", 5: "....hhhhhhhh....",
     6: ".....ssssss.....", 7: ".....skssks.....", 8: ".....bssssb........c..", 9: ".....bbbbbb.swwwwwcCc.",
     10: "....rrbbbbrrr......c..", 11: "...srrrbbrrr....", 12: "....rrrRRrrr....",
@@ -952,15 +982,15 @@ pose("wizard", "a2", swap(Z, {             # staff thrust out
 # everyday sprite: staff on the far side, free hand toward the monster.
 H = [r[::-1] for r in SPR["healer"][1]]
 SPR["healer"][0]["P"] = "#3fbf8f"
-pose("healer", "f", H)
-pose("healer", "a1", dots(H, [(12, 10, "."), (12, 9, "r"), (13, 8, "s"), (13, 5, "h"), (13, 6, "P"), (14, 6, "P"), (13, 7, "P"), (14, 7, "P")]))  # potion held up
-pose("healer", "a2", dots(H, [(13, 10, "r"), (14, 10, "s")]))                                                                         # arm flung out
+pose("healer", "stance", H)
+pose("healer", "windup", dots(H, [(12, 10, "."), (12, 9, "r"), (13, 8, "s"), (13, 5, "h"), (13, 6, "P"), (14, 6, "P"), (13, 7, "P"), (14, 7, "P")]))  # potion held up
+pose("healer", "strike", dots(H, [(13, 10, "r"), (14, 10, "s")]))                                                                         # arm flung out
 
 # ---- The pixel font: digits and a few signs, 3x5, for damage numbers and the
 # badges on the status icons. Each glyph is outlined all round (corners too, so
 # it reads over a monster or the sky) and comes in every colour main.js uses.
 # Its characters and colours must match GLYPHS and GLYPH_COLOURS in
-# mods/idle-rpg/rules.js, which names the files (glyphArt).
+# mods/idle-rpg/rules.js, which names the files (glyphArt): font/<colour>/<name>.
 FONT = {
     "0": ["###", "#.#", "#.#", "#.#", "###"],
     "1": [".#.", "##.", ".#.", ".#.", "###"],
@@ -992,10 +1022,10 @@ def glyph(name, rows, colour):
 
 for colour, hexa in GLYPH_COLOURS.items():
     for ch, rows in FONT.items():
-        glyph(f"glyph-{colour}-{ch}.png", rows, hexa)
+        glyph(f"font/{colour}/{ch}.png", rows, hexa)
 
-# ---- The settings menu: a gear, the right-most icon of the top-right corner ----
-icon("i-gear.png", [
+# ---- The settings menu: a gear (icons/), the right-most icon of the top-right corner ----
+icon("icons/gear.png", [
     "..s..s..",
     ".ssssss.",
     "ssggggss",
@@ -1016,7 +1046,7 @@ icon("i-gear.png", [
 # image, so its hats are mirrored in them too. A hat's outline goes only where
 # the picture under it is see-through, never across a face; "#" in a grid is
 # outline drawn on purpose, over the picture. An overlay only covers, so one
-# serves every colourway: hat-<id>-<class><frame>.png. The ids, in this order,
+# serves every colourway: hats/<id>/<class>/<frame>.png. The ids, in this order,
 # must match HAT_NAMES in mods/idle-rpg/rules.js.
 HAT_PAL = {
     "P": "#e8508f", "p": "#b8336c", "y": "#ffd75e", "o": "#f4f7fb",                   # party: cone, shade, stripes, pompom
@@ -1145,15 +1175,15 @@ def pictures(rows, posed):
     # every picture of a class as (frame, grid), as the code above draws it:
     # `rows` in the everyday 16x16 grid, `posed(tag)` a pose's 22-wide rows.
     # The frames are FRAMES in mods/idle-rpg/rules.js.
-    out = [("", canvas(rows, 18, 1))]
+    out = [("stand", canvas(rows, 18, 1))]
     for tag, side in (("l", -1), ("r", 1)):
-        out.append((f"-walk-{tag}", canvas(lift(rows, side), 18, 1, lambda y: side if y < 14 else 0)))
-    out.append(("-rag-c", canvas(rows, 22, 3)))
+        out.append((f"walk/{tag}", canvas(lift(rows, side), 18, 1, lambda y: side if y < 14 else 0)))
+    out.append(("rag/c", canvas(rows, 22, 3)))
     for tag, side in (("l", -1), ("r", 1)):
-        out.append((f"-rag-{tag}", canvas(rows, 22, 3, lambda y: side * round(y * 0.2))))
-    for tag in ("f", "a1", "a2"):
-        out.append((f"-{tag}-r", box(posed(tag))))
-        out.append((f"-{tag}-l", box([r[::-1] for r in posed(tag)])))
+        out.append((f"rag/{tag}", canvas(rows, 22, 3, lambda y: side * round(y * 0.2))))
+    for tag in ("stance", "windup", "strike"):
+        out.append((f"{tag}/r", box(posed(tag))))
+        out.append((f"{tag}/l", box([r[::-1] for r in posed(tag)])))
     return out
 
 def overlay(hat, body):
@@ -1178,4 +1208,4 @@ for hat, by_class in HATS.items():
         body = pictures(SPR[cls][1], lambda tag: POSED[(cls, tag)])
         over = pictures(rows, lambda tag: [r.ljust(22, ".") for r in mine])
         for (frame, b), (_, g) in zip(body, over):
-            save(f"hat-{hat}-{cls}{frame}.png", overlay(g, b))
+            save(f"hats/{hat}/{cls}/{frame}.png", overlay(g, b))
