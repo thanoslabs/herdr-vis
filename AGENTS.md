@@ -41,7 +41,7 @@ Agent workspace visualizers for the [Herdr](https://herdr.dev) desktop app. Each
 - `herdr-app shot <file.png>` captures the window for visual checks.
 - Keep each visualizer's `RECIPE.md`, `preview.png` and `battle.gif` in step with its files.
 - Art is original. Do not copy characters or artwork from existing games or products.
-- `art/` is organised by entity, then by animation, with short names inside (`classes/<class>/<look>/walk/l.png`, `monsters/dragon/roar/top.png`); the generator's header and `RECIPE.md` list the folders. A picture whose path depends on the state or an agent gets it from a builder in `rules.js` (`lookArt`, `hatArt`, `monsterArt`, `glyphArt`), never from string concatenation in `main.js`; the rest are quoted paths passed to `src()` in `main.js`. A new picture goes in the generator, in the folder of what it shows.
+- `art/` is organised by entity, then by animation, with short names inside (`classes/<class>/<look>/walk/l.png`, `monsters/dragon/roar/top.png`); the generator's header and `RECIPE.md` list the folders. A picture whose path depends on the state or an agent gets it from a builder in `rules.js` (`lookArt`, `weaponArt`, `hatArt`, `attackArt`, `monsterArt`, `glyphArt`), never from string concatenation in `main.js`; the rest are quoted paths passed to `src()` in `main.js`. A new picture goes in the generator, in the folder of what it shows.
 - `gpui-kit.d.ts` and `jsconfig.json` inside mod folders are written by Herdr and git-ignored.
 
 ## Conventions
