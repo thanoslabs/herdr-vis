@@ -657,7 +657,7 @@ def ogre(name, roar=False, lids=False, keep=None):        # 48x48
         p.rect(16, 19, 15, 3, "#3a1f1f"); p.rect(17, 17, 2, 4, BONE); p.rect(28, 17, 2, 4, BONE)
     p.save(name, keep=keep)
 
-def dragon(name, part=None, lids=False, keep=None):       # 80x64, facing left; part: "tail" or "body" alone
+def dragon(name, part=None, lids=False, keep=None, pose=None):  # 80x64, facing left; part: "tail" or "body" alone
     p = Pix(80, 64)
     R, Rd, Rl = "#c23b3b", "#8f2626", "#e06a5a"
     Wg, Wm, Cr = "#7a1f2b", "#b5483f", "#f2c98a"
@@ -668,24 +668,42 @@ def dragon(name, part=None, lids=False, keep=None):       # 80x64, facing left; 
         p.poly([(54, 46), (72, 36), (79, 22), (80, 26), (76, 40), (60, 56)], Rd)   # tail
         p.poly([(77, 22), (80, 14), (80, 24)], BONE)
     if part == "tail": return p.save(name)
-    p.poly([(44, 34), (52, 6), (62, 14), (70, 4), (76, 26), (62, 38)], Wg)          # far wing
+    # A roar (pose): "rear" draws the head back and up and lifts the wings a
+    # little, "roar" thrusts the head forward with the jaw wide and the wings
+    # high. Only the head, the top of the neck and the wing tips move; the
+    # neck's foot and everything below the breathing cut (y 38) stay put.
+    hx, hy, lift = {None: (0, 0, 0), "rear": (2, -2, 1), "roar": (-1, 1, 2)}[pose]
+    h = lambda pts: [(x + hx, y + hy) for x, y in pts]
+    up = lambda pts, tips: [(x, y - lift) if i in tips else (x, y) for i, (x, y) in enumerate(pts)]
+    p.poly(up([(44, 34), (52, 6), (62, 14), (70, 4), (76, 26), (62, 38)], (1, 2, 3)), Wg)  # far wing
     p.ell(44, 45, 20, 13, Rd); p.ell(43, 44, 19, 12, R); p.ell(40, 51, 14, 5, Cr)   # body, belly
     p.rect(30, 52, 8, 9, Rd); p.rect(50, 52, 8, 9, Rd)                              # legs
     p.rect(27, 60, 12, 3, Rd); p.rect(47, 60, 12, 3, Rd)
     for x in (27, 31, 35, 47, 51, 55): p.px(x, 62, BONE)
-    p.poly([(22, 20), (34, 18), (42, 38), (28, 44)], R)                             # neck
-    p.poly([(22, 22), (26, 21), (32, 42), (28, 44)], Cr)
-    for i in range(5): p.rect(22 + i, 24 + i * 4, 4, 1, "#d9a868")
-    for x, y in ((34, 14), (38, 22), (42, 28), (48, 28), (54, 30), (60, 34)):       # back spikes
+    p.poly(h([(22, 20), (34, 18)]) + [(42, 38), (28, 44)], R)                       # neck
+    p.poly(h([(22, 22), (26, 21)]) + [(32, 42), (28, 44)], Cr)
+    for i in range(5): p.rect(22 + i + round(hx * (4 - i) / 4), 24 + i * 4 + round(hy * (4 - i) / 4), 4, 1, "#d9a868")
+    for x, y in ((34 + hx, 14 + hy), (38, 22), (42, 28), (48, 28), (54, 30), (60, 34)):  # back spikes
         p.poly([(x, y + 5), (x + 2, y), (x + 5, y + 5)], BONE)
-    p.poly([(40, 36), (46, 8), (58, 16), (66, 2), (72, 22), (58, 36)], Wm)          # near wing
-    p.poly([(46, 8), (48, 10), (44, 34), (40, 36)], Rd); p.poly([(66, 2), (68, 4), (60, 34), (58, 36)], Rd)
-    p.ell(19, 17, 11, 7, Rd); p.ell(18, 16, 10, 6, R)                               # head
-    p.rect(3, 14, 14, 8, R); p.rect(3, 14, 14, 1, Rl); p.rect(2, 16, 2, 5, R)       # snout
-    p.rect(5, 22, 16, 3, Rd)                                                        # jaw
-    for x in (6, 9, 12, 15): p.px(x, 22, WHITE)
-    p.px(4, 16, K); p.rect(17, 12, 4, 4, "#ffe27a"); p.rect(18, 12, 1, 4, K)
-    p.poly([(23, 12), (31, 3), (27, 14)], BONE); p.poly([(19, 10), (24, 2), (22, 11)], BONE)  # horns
+    p.poly(up([(40, 36), (46, 8), (58, 16), (66, 2), (72, 22), (58, 36)], (1, 2, 3)), Wm)  # near wing
+    p.poly(up([(46, 8), (48, 10), (44, 34), (40, 36)], (0, 1)), Rd); p.poly(up([(66, 2), (68, 4), (60, 34), (58, 36)], (0, 1)), Rd)
+    p.ell(19 + hx, 17 + hy, 11, 7, Rd); p.ell(18 + hx, 16 + hy, 10, 6, R)           # head
+    if pose == "roar":                                                              # jaws wide
+        p.poly(h([(4, 17), (21, 17), (22, 24), (5, 30)]), "#3a1f1f")                # mouth
+        p.poly(h([(7, 28), (19, 22), (21, 24), (9, 29)]), "#c94040")               # tongue
+        p.poly(h([(2, 30), (19, 23), (22, 23), (22, 27), (6, 33)]), Rd)             # lower jaw, dropped
+        for x, y in ((5, 29), (9, 28), (13, 26), (17, 25)): p.px(x + hx, y + hy, WHITE)
+        p.rect(3 + hx, 10 + hy, 14, 7, R); p.rect(3 + hx, 10 + hy, 14, 1, Rl); p.rect(2 + hx, 12 + hy, 2, 4, R)  # snout, raised
+        for x in (6, 9, 12, 15): p.px(x + hx, 17 + hy, WHITE)
+        p.rect(4 + hx, 17 + hy, 1, 2, WHITE); p.rect(13 + hx, 17 + hy, 1, 2, WHITE)  # fangs
+        p.px(4 + hx, 12 + hy, K); p.rect(17 + hx, 13 + hy, 4, 3, "#ffe27a"); p.rect(18 + hx, 13 + hy, 1, 3, K)
+        p.rect(16 + hx, 12 + hy, 6, 1, Rd)                                          # brow, lowered
+    else:
+        p.rect(3 + hx, 14 + hy, 14, 8, R); p.rect(3 + hx, 14 + hy, 14, 1, Rl); p.rect(2 + hx, 16 + hy, 2, 5, R)  # snout
+        p.rect(5 + hx, 22 + hy, 16, 3, Rd)                                          # jaw
+        for x in (6, 9, 12, 15): p.px(x + hx, 22 + hy, WHITE)
+        p.px(4 + hx, 16 + hy, K); p.rect(17 + hx, 12 + hy, 4, 4, "#ffe27a"); p.rect(18 + hx, 12 + hy, 1, 4, K)
+    p.poly(h([(23, 12), (31, 3), (27, 14)]), BONE); p.poly(h([(19, 10), (24, 2), (22, 11)]), BONE)  # horns
     p.save(name, keep=keep)
 
 # Each monster's whole picture, the pieces that move on their own, and eyelids
@@ -700,6 +718,23 @@ dragon("monster-dragon.png"); dragon("monster-dragon-blink.png", lids=True)
 dragon("monster-dragon-tail.png", part="tail")                      # sways behind the body
 dragon("monster-dragon-body.png", part="body")
 dragon("monster-dragon-top.png", part="body", keep=lambda x, y: y < 38)  # head, neck, wings: breathing
+dragon("monster-dragon-rear.png", part="body", pose="rear")         # a roar: the wind-up, then
+dragon("monster-dragon-roar.png", part="body", pose="roar")         # the roar itself,
+dragon("monster-dragon-roar-top.png", part="body", pose="roar", keep=lambda x, y: y < 38)  # its upper body shaking
+icon("roar-wave.png", [                                 # rings out of the roaring dragon's mouth, to the left
+    "...ww",
+    "..w..",
+    ".w...",
+    ".w...",
+    "w....",
+    "w....",
+    "w....",
+    "w....",
+    ".w...",
+    ".w...",
+    "..w..",
+    "...ww",
+], {"w": "#f2c98a"})
 
 # ---- Attacks (battle mode). "-r" flies or faces right, "-l" is its mirror. ----
 def both(name, rows, pal):
