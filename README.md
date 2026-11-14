@@ -58,7 +58,7 @@ Alternatively, ask your agent inside Herdr to read `~/.config/herdr-app/AGENTS.m
 
 - Edit the files in this repo, then run `./install.sh idle-rpg` to copy them into Herdr. Herdr reloads layouts and mods as they change; if a mod edit does not show, switch layouts away and back.
 - Run `herdr-app check idle-rpg/mods/idle-rpg` after every mod change, and `herdr-app status` to see errors.
-- All the pixel art is generated: edit the grids in `tools/idle-rpg-sprites.py` and run `python3 tools/idle-rpg-sprites.py idle-rpg/mods/idle-rpg/art`.
+- All the pixel art is generated: edit the grids in `tools/idle-rpg-sprites.py` and run `python3 tools/idle-rpg-sprites.py idle-rpg/mods/idle-rpg/art`. It writes `art/` in folders by what a picture shows, then by what it is doing (`scene/`, `classes/<class>/<look>/walk/l.png`, `hats/`, `monsters/<kind>/roar/`, `attacks/`, `stations/`, `campfire/`, `light/`, `status/`, `icons/`, `font/`); `idle-rpg/RECIPE.md` lists them. Re-running `./install.sh` replaces the installed `art/` whole, so no picture from an older install lingers.
 - Herdr writes `gpui-kit.d.ts` and `jsconfig.json` into each mod folder; they are git-ignored.
 - See [CONTRIBUTING.md](CONTRIBUTING.md) for branch, commit and release conventions.
 
@@ -70,7 +70,7 @@ Alternatively, ask your agent inside Herdr to read `~/.config/herdr-app/AGENTS.m
 ├── tools/           # idle-rpg-sprites.py: draws every PNG in art/
 ├── idle-rpg/
 │   ├── layouts/     # idle-rpg.json (the window), idle-rpg.svg (settings preview)
-│   ├── mods/        # idle-rpg/ (main.js, rules.js, mod.json, art/)
+│   ├── mods/        # idle-rpg/ (main.js, rules.js, mod.json, art/<entity>/…)
 │   ├── themes/      # idle-rpg.json
 │   ├── RECIPE.md    # the brief the layout is built from
 │   └── preview.png
