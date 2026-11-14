@@ -517,6 +517,7 @@ icon("i-skull.png", [                                   # slain
     ".wwwww.",
     ".wkwkw.",
 ], {"w": "#ece6d6", "k": "#2a2433"})
+icon("arrow.png", ["ggggg", ".ggg.", "..g.."], {"g": "#ffd166"})  # bobs over the station under the pointer
 icon("i-armour.png", [                                  # the shop's armours
     "aa...aa",
     "aAaaaAa",

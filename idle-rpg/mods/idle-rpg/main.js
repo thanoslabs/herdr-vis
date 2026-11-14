@@ -1469,8 +1469,9 @@ export default class RaidParty extends View {
   // floor; they stand at the back, between the banners and torches.
   stations() {
     const spare = CLASSES.reduce((sum, c) => sum + pointsLeft(this.progress, c), 0);
-    // Under the pointer a station shows it can be used: a soft glow behind
-    // it, its picture hopping up a pixel of art, and its name turning gold.
+    // Under the pointer a station shows it can be used, plainly enough for
+    // broad daylight: a gold frame and glow around it, a gold arrow bobbing
+    // over it, its picture hopping up a pixel of art, and its name on gold.
     const station = (id, left, top, w, h, name, act, ...inside) => {
       const hot = this.hot === id;
       return div()
@@ -1481,7 +1482,9 @@ export default class RaidParty extends View {
         .w(w)
         .h(h)
         .rounded(8)
-        .bg(hot ? "#fff2b02e" : "#fff2b000")
+        .border(2)
+        .border_color(hot ? GOLD : "#ffd16600")
+        .bg(hot ? "#ffd16640" : "#ffd16600")
         .cursor_pointer()
         .on_hover((hovered, cx) => {
           if (hovered) this.hot = id;
@@ -1513,12 +1516,22 @@ export default class RaidParty extends View {
               div()
                 .px(5)
                 .rounded(7)
-                .bg(hot ? "#000000a8" : "#00000066")
+                .bg(hot ? GOLD : "#00000066")
                 .text_size(10)
                 .font_semibold()
-                .text_color(hot ? GOLD : CREAM)
+                .text_color(hot ? "#2a1a0c" : CREAM)
                 .child(name),
             ),
+        )
+        .when(hot, (el) =>
+          el.child(
+            div()
+              .absolute()
+              .left(w / 2 - 14)
+              .top(-38)
+              .loop("top", { from: -38, to: -30, period: 420 })
+              .child(image(`${ART}/arrow.png`).w(28).h(20)),
+          ),
         );
     };
     const art = (name, w, h, left = 0, top = 0) =>
