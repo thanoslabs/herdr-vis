@@ -137,6 +137,15 @@ const FLIGHT = TICK_STEP * 2;
 const POP_FADE = 350; // an impact fades out this long; rules.js counts on it being under two ticks
 const BLINK_MS = 5200; // monsters blink this often
 const ROAR_MS = 14000; // and the ogre roars this often
+const DRAGON_ROAR_MS = 19000; // the dragon's roar is a bigger show, so a little rarer
+// The dragon's roar, step by step, and how long each step shows: it rears
+// back, roars with its jaws wide while its upper body shakes and rings of
+// sound leave its mouth, then settles back to breathing.
+const DRAGON_ROAR = [
+  ["rear", 300],
+  ["roar", 950],
+  ["settle", 250],
+];
 const MOVE = { duration: 700, easing: "ease-in-out" }; // walking between spots and the formation
 const CHEER_MS = 2400; // a level-up note over someone's head rises and fades this long
 const CRIT_MS = 1200; // a critical blow's number rises and fades this long
@@ -224,8 +233,22 @@ export default class RaidParty extends View {
         cx.notify();
       });
     };
-    cx.timer.every(BLINK_MS, flick("blink", 170, () => !this.roar));
+    this.howl = null; // the step of the dragon's roar in progress (see DRAGON_ROAR), else null
+    this.howls = 0; // how many it has started, so each one's rings of sound are new elements
+    cx.timer.every(BLINK_MS, flick("blink", 170, () => !this.roar && !this.howl));
     cx.timer.every(ROAR_MS, flick("roar", 1100, () => this.monster.kind === "ogre"));
+    // The dragon's roar is one render per step, each timed by the one before;
+    // nothing renders between roars or while the monster is something else.
+    const howl = (i) => (cx) => {
+      this.howl = DRAGON_ROAR[i]?.[0] ?? null;
+      cx.notify();
+      if (this.howl) cx.timer.after(DRAGON_ROAR[i][1], howl(i + 1));
+    };
+    cx.timer.every(DRAGON_ROAR_MS, (cx) => {
+      if (!this.fighting || !(this.monster?.hp > 0) || this.monster.kind !== "dragon" || this.howl) return;
+      this.howls += 1;
+      howl(0)(cx);
+    });
     cx.timer.every(WATCH_MS, (cx) => {
       // nothing happens while the scene is too narrow to show the fight
       if (!this.battle || Math.max(320, this.size.width) < 640) return;
@@ -528,7 +551,31 @@ export default class RaidParty extends View {
     const dead = m.hp <= 0;
     const hurt = hits > 0 && !dead;
     const roaring = m.kind === "ogre" && this.roar;
-    const lids = this.blink && !dead && !roaring;
+    const howl = m.kind === "dragon" && !dead ? this.howl : null; // the dragon's roar: "rear" | "roar" | "settle"
+    const lids = this.blink && !dead && !roaring && !howl;
+    // Rings of sound leave the dragon's mouth one after another as the roar
+    // starts. Each is drawn from the wind-up on, unseen at the mouth, so the
+    // roar's render has something to glide: out to the left as it fades in,
+    // then out again by an inner fade (the two opacities multiply).
+    const ring = (i) => {
+      const on = howl !== "rear";
+      const delay = i * 180;
+      return div()
+        .id(`idle-rpg-roar-wave-${this.howls}-${i}`)
+        .absolute()
+        .left(on ? -150 : -20)
+        .top(74)
+        .opacity(on ? 1 : 0)
+        .transition("opacity", { duration: 120, delay, easing: "ease-out" })
+        .transition("left", { duration: 800, delay, easing: "linear" })
+        .child(
+          div()
+            .id(`idle-rpg-roar-fade-${this.howls}-${i}`)
+            .opacity(on ? 0 : 1)
+            .transition("opacity", { duration: 450, delay: delay + 300, easing: "ease-in" })
+            .child(image(`${ART}/roar-wave.png`).w(28).h(56)),
+        );
+    };
     // one piece of the monster's art, laid over the whole picture's box
     const layer = (part) =>
       div()
@@ -556,12 +603,16 @@ export default class RaidParty extends View {
             // nothing ever shows through: the slime's dome sinks into its foot
             // and rises, the dragon's tail sways behind its body, and the ogre
             // and dragon breathe with their upper body while the feet stay
-            // planted. The ogre now and then roars, and all blink.
+            // planted. The ogre and dragon now and then roar (the dragon's
+            // whole picture swaps for its wind-up and roar, with only the
+            // roaring upper body shaking over it), and all blink.
             .top(this.struck && hurt ? -4 : 0)
             .transition("top", { duration: 90, easing: "ease-out" })
             .when(m.kind === "dragon", (el) => el.child(layer("tail").loop("top", { from: 0, to: 5, period: 2600 })))
-            .child(layer(roaring ? "2" : m.kind === "slime" ? "base" : m.kind === "dragon" ? "body" : null))
-            .when(!roaring, (el) =>
+            .child(layer(roaring ? "2" : m.kind === "slime" ? "base" : m.kind === "dragon" ? (howl === "roar" ? "roar" : howl ? "rear" : "body") : null))
+            .when(howl === "roar", (el) => el.child(layer("roar-top").loop("left", { from: -2, to: 2, period: 140, easing: "linear" })))
+            .when(Boolean(howl), (el) => el.children([0, 1, 2].map(ring)))
+            .when(!roaring && !howl, (el) =>
               el.child(
                 layer("top")
                   .loop("top", m.kind === "slime" ? { from: 0, to: 8, period: 1700 } : { from: 0, to: -3, period: m.kind === "dragon" ? 3200 : 2600 })
