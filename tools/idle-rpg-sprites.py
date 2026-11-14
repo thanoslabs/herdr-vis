@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # Draws Idle RPG's pixel art as PNGs (no dependencies): the class sprites
 # (stubby 16x16 adventurers with a one-pixel dark outline, in every colourway
-# the shop sells) and the castle scenery (wall, floor, mountains, clouds, sun,
-# moon, stars, props).
+# the shop sells), the castle scenery (wall, floor, mountains, clouds, sun,
+# moon, stars, props), the icons, and a small pixel font for numbers.
 #
 #   python3 tools/idle-rpg-sprites.py idle-rpg/mods/idle-rpg/art
 #
@@ -831,3 +831,53 @@ SPR["healer"][0]["P"] = "#3fbf8f"
 pose("healer", "f", H)
 pose("healer", "a1", dots(H, [(12, 10, "."), (12, 9, "r"), (13, 8, "s"), (13, 5, "h"), (13, 6, "P"), (14, 6, "P"), (13, 7, "P"), (14, 7, "P")]))  # potion held up
 pose("healer", "a2", dots(H, [(13, 10, "r"), (14, 10, "s")]))                                                                         # arm flung out
+
+# ---- The pixel font: digits and a few signs, 3x5, for damage numbers and the
+# badges on the status icons. Each glyph is outlined all round (corners too, so
+# it reads over a monster or the sky) and comes in every colour main.js uses.
+# Its characters and colours must match GLYPHS and GLYPH_COLOURS in
+# mods/idle-rpg/rules.js, which names the files (glyphArt).
+FONT = {
+    "0": ["###", "#.#", "#.#", "#.#", "###"],
+    "1": [".#.", "##.", ".#.", ".#.", "###"],
+    "2": ["###", "..#", "###", "#..", "###"],
+    "3": ["###", "..#", ".##", "..#", "###"],
+    "4": ["#.#", "#.#", "###", "..#", "..#"],
+    "5": ["###", "#..", "###", "..#", "###"],
+    "6": ["###", "#..", "###", "#.#", "###"],
+    "7": ["###", "..#", "..#", ".#.", ".#."],
+    "8": ["###", "#.#", "###", "#.#", "###"],
+    "9": ["###", "#.#", "###", "..#", "###"],
+    "plus": ["...", ".#.", "###", ".#.", "..."],
+    "bang": [".#.", ".#.", ".#.", "...", ".#."],
+}
+GLYPH_COLOURS = {"white": "#ffffff", "gold": "#ffd166"}  # a plain hit and a badge; a critical blow
+
+def glyph(name, rows, colour):
+    h, w = len(rows) + 2, len(rows[0]) + 2
+    g = [[None] * w for _ in range(h)]
+    for y, row in enumerate(rows):
+        for x, ch in enumerate(row):
+            if ch == "#": g[y + 1][x + 1] = colour
+    o = [r[:] for r in g]
+    for y in range(h):
+        for x in range(w):
+            if g[y][x] is None and any(0 <= y+j < h and 0 <= x+i < w and g[y+j][x+i] for i in (-1, 0, 1) for j in (-1, 0, 1)):
+                o[y][x] = OUTLINE
+    save(name, o)
+
+for colour, hexa in GLYPH_COLOURS.items():
+    for ch, rows in FONT.items():
+        glyph(f"glyph-{colour}-{ch}.png", rows, hexa)
+
+# ---- The settings menu: a gear, the right-most icon of the top-right corner ----
+icon("i-gear.png", [
+    "..s..s..",
+    ".ssssss.",
+    "ssggggss",
+    ".sg..gs.",
+    ".sg..gs.",
+    "ssggggss",
+    ".ssssss.",
+    "..s..s..",
+], {"s": "#c3ccd8", "g": "#8f9bab"})

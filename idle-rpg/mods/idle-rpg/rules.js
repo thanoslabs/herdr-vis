@@ -11,11 +11,12 @@
 // its kind. Gold buys looks in the shop, which also belong to a class: every
 // character with that class on wears its colourway. Levels are worked out from
 // total experience, never stored; skill ranks are stored, and points left are
-// worked out from levels and ranks.
+// worked out from levels and ranks. Settings (SETTINGS) are kept with the
+// rest of the state.
 
 export const CLASSES = ["wizard", "healer", "warrior", "archer"];
 export const YOU = "you"; // the person's key in `sprites`, `xp` and as an open card
-export const STATE_VERSION = 3;
+export const STATE_VERSION = 4;
 // Each kind's HP, kept on a monster as `maxHp` when it turns up. The kinds are
 // the keys of MONSTERS in main.js, which draws them.
 export const MONSTER_HP = { slime: 100, ogre: 300, dragon: 500 };
@@ -95,6 +96,25 @@ export const SHOP_KINDS = Object.keys(SHOP);
 // in every colourway.
 export const POSES = ["f", "a1", "a2"];
 export const FRAMES = ["", "-walk-l", "-walk-r", "-rag-c", "-rag-l", "-rag-r", ...POSES.flatMap((p) => [`-${p}-l`, `-${p}-r`])];
+
+// The settings menu (the gear in the top-right corner): one switch per entry,
+// in this order, each { key, name, default }. A setting is a boolean saved under
+// `settings.<key>`; adding one is adding an entry here and reading it in main.js.
+export const SETTINGS = [{ key: "damageNumbers", name: "Show damage numbers", default: true }];
+
+// The pixel font (main.js lays numbers out with it): the characters it has,
+// each drawn in every one of GLYPH_COLOURS by tools/idle-rpg-sprites.py.
+export const GLYPHS = "0123456789+!";
+export const GLYPH_COLOURS = ["white", "gold"];
+const GLYPH_NAMES = { "+": "plus", "!": "bang" };
+
+// The name one character of the pixel font goes by in art/ in `colour`
+// ("glyph-gold-7", "glyph-white-plus"; add ".png" for a file), or null for a
+// character or colour it does not have, so no other string can end up in a path.
+export function glyphArt(colour, ch) {
+  if (!GLYPH_COLOURS.includes(colour) || typeof ch !== "string" || ch.length !== 1 || !GLYPHS.includes(ch)) return null;
+  return `glyph-${colour}-${GLYPH_NAMES[ch] ?? ch}`;
+}
 
 const MAX = Number.MAX_SAFE_INTEGER;
 const MAX_MONSTER_HP = 1e6; // the most a saved monster is believed to have
@@ -366,6 +386,12 @@ function looksOf(saved, cls) {
   );
 }
 
+// The saved settings: every one of SETTINGS, its saved value if that is a
+// boolean, else its default. Anything else saved there is dropped.
+export function settingsOf(saved) {
+  return Object.fromEntries(SETTINGS.map(({ key, default: on }) => [key, record(saved) && has(saved, key) && typeof saved[key] === "boolean" ? saved[key] : on]));
+}
+
 // The saved monster, or null if it is not one: { kind, hp, maxHp, id, slainAt? }.
 // An absurd max HP is cut down, and a time of death in the future is brought
 // back to now, so neither can leave a monster that never falls or never leaves.
@@ -390,7 +416,7 @@ function ranksOf(saved, cls, xp) {
 }
 
 // The saved state as this version keeps it, from whatever was read back:
-// older versions without the progress fields, skill ranks or looks, or anything
+// older versions without the progress fields, skill ranks, looks or settings, or anything
 // malformed. Never throws; a bad field falls back to its default, a bad entry
 // is dropped.
 //
@@ -418,5 +444,7 @@ export function loadState(saved, now = Date.now()) {
     skills: Object.fromEntries(CLASSES.map((c) => [c, ranksOf(record(s.skills) ? s.skills[c] : undefined, c, xp[c])])),
     // versions 1 and 2 had no shop: every class owns and wears its default
     looks: Object.fromEntries(CLASSES.map((c) => [c, looksOf(record(s.looks) && has(s.looks, c) ? s.looks[c] : undefined, c)])),
+    // versions 1 to 3 had no settings: every one starts at its default
+    settings: settingsOf(s.settings),
   };
 }
