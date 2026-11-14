@@ -1242,6 +1242,7 @@ export default class RaidParty extends View {
           // the table and the barrel stand at the back, clear of the monster's corner
           .child(div().absolute().left(12).top(-34).child(image(`${ART}/table.png`).w(112).h(56)))
           .child(div().absolute().left(136).top(-30).child(image(`${ART}/barrel.png`).w(48).h(52)))
+          .when(!this.battle, (el) => el.children(this.stations()))
           .children(actors.flatMap((p) => p.draw()))
           .child(this.gloom(W))
           .when(list.length === 0, (el) =>
@@ -1366,12 +1367,7 @@ export default class RaidParty extends View {
                           .hover((st) => st.bg("#ffffff30"))
                           .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
                           .on_click((_e, cx) => {
-                            this.codex = !this.codex;
-                            if (this.codex) {
-                              // only one panel or card at a time
-                              this.skillsOpen = this.shopOpen = this.card = null;
-                              this.picking = false;
-                            }
+                            this.openCodex(!this.codex);
                             cx.notify();
                           }),
                       )
@@ -1429,9 +1425,9 @@ export default class RaidParty extends View {
               .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
               .on_click((_e, cx) => {
                 this.battle = !this.battle;
-                // the codex and the shop open from chips the sign shows only in a raid
+                // the panels open from different places in a raid and out of one
                 this.codex = false;
-                this.shopOpen = null;
+                this.skillsOpen = this.shopOpen = null;
                 if (this.battle) this.fight(); // someone to fight straight away
                 this.save();
                 this.wake(cx);
@@ -1442,9 +1438,9 @@ export default class RaidParty extends View {
       )
       .child(floor)
       // last, so they lie over the floor and everyone on it
-      .when(this.codex && this.battle, (el) => el.child(this.codexCard(props()?.inset ?? 84)))
+      .when(this.codex, (el) => el.child(this.codexCard(props()?.inset ?? 84)))
       .when(CLASSES.includes(this.skillsOpen), (el) => el.child(this.skillsCard(props()?.inset ?? 84)))
-      .when(this.battle && CLASSES.includes(this.shopOpen), (el) => el.child(this.shopCard(props()?.inset ?? 84)));
+      .when(CLASSES.includes(this.shopOpen), (el) => el.child(this.shopCard(props()?.inset ?? 84)));
   }
 
   // Opens the skills panel on class `cls` (null closes it), closing the codex,
@@ -1455,6 +1451,68 @@ export default class RaidParty extends View {
     this.codex = false;
     this.shopOpen = this.card = null;
     this.picking = false;
+  }
+
+  // Opens or closes the codex, closing the other panels and any card.
+  openCodex(open) {
+    this.codex = open;
+    if (!open) return;
+    this.skillsOpen = this.shopOpen = this.card = null;
+    this.picking = false;
+  }
+
+  // Between raids the rampart has three stations, each opening one of the
+  // panels the sign's chips open during one: the book on the table is the
+  // codex, the merchant's stall the shop, and the training dummy the skills
+  // (with the points waiting to be spent, if any). Returns elements for the
+  // floor; they stand at the back, between the banners and torches.
+  stations() {
+    const spare = CLASSES.reduce((sum, c) => sum + pointsLeft(this.progress, c), 0);
+    const station = (id, left, top, w, h, name, act, ...inside) =>
+      div()
+        .id(`idle-rpg-station-${id}`)
+        .absolute()
+        .left(left)
+        .top(top)
+        .w(w)
+        .h(h)
+        .cursor_pointer()
+        .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+        .on_click((_e, cx) => {
+          act();
+          cx.notify();
+        })
+        .children(inside)
+        .child(
+          h_flex()
+            .absolute()
+            .left(w / 2 - 40)
+            .top(h + 3)
+            .w(80)
+            .justify_center()
+            .child(div().px(5).rounded(7).bg("#00000066").text_size(10).font_semibold().text_color(CREAM).child(name)),
+        );
+    const art = (name, w, h, left = 0, top = 0) =>
+      div()
+        .absolute()
+        .left(left)
+        .top(top)
+        .child(image(`${ART}/${name}.png`).w(w).h(h));
+    return [
+      // over the table that is always there, with the book lying on it
+      station("codex", 12, -34, 112, 56, "Codex", () => this.openCodex(!this.codex), art("book", 32, 24, 36, -8)),
+      station(
+        "skills",
+        204,
+        -52,
+        48,
+        72,
+        spare > 0 ? `Skills +${spare}` : "Skills",
+        () => this.openSkills(this.skillsOpen ? null : (CLASSES.find((c) => pointsLeft(this.progress, c) > 0) ?? this.sprites[YOU])),
+        art("dummy", 48, 72),
+      ),
+      station("shop", 304, -64, 104, 84, "Shop", () => this.openShop(this.shopOpen ? null : this.sprites[YOU]), art("stall", 104, 84)),
+    ];
   }
 
   // Opens the shop on class `cls` (null closes it), closing the codex, the
