@@ -1,27 +1,36 @@
 #!/bin/sh
-# Install a visualizer the way Herdr expects: copy its layout, theme and mod
-# files into the Herdr config home. Re-run to update an existing install.
+# Install the Idle RPG layout the way Herdr expects: copy its layout, theme and
+# mod files into the Herdr config home. Re-run to update an existing install.
 #
-#   ./install.sh [name]        default: idle-rpg
+#   ./install.sh
 set -eu
 
-name="${1:-idle-rpg}"
-case "$name" in
-  '' | */* | .*) echo "not a visualizer name: $name" >&2; exit 2 ;;
+name=idle-rpg
+# The layout used to live in a folder of that name, passed as an argument;
+# it is still accepted, and anything else is a mistake.
+usage() { echo "usage: ./install.sh (installs the $name layout)" >&2; exit 2; }
+[ $# -le 1 ] || usage
+case "${1:-$name}" in
+  "$name") ;;
+  *) usage ;;
 esac
-root="$(CDPATH='' cd -P -- "$(dirname -- "$0")" && pwd)"
-src="$root/$name"
+src="$(CDPATH='' cd -P -- "$(dirname -- "$0")" && pwd)"
 home="${HERDR_APP_HOME:-$HOME/.config/herdr-app}"
 
-[ -d "$src/layouts" ] || { echo "no visualizer named '$name' in $root" >&2; exit 1; }
+[ -d "$src/layouts" ] || { echo "no layouts folder beside install.sh: $src" >&2; exit 1; }
 [ -d "$home" ] || { echo "Herdr config home not found: $home (open the app once first)" >&2; exit 1; }
 
+# Before copying anything: the repo is laid out like a Herdr home, so a home
+# that is the repo, or whose layouts, themes or mods folder leads back into
+# it, would have the repo's own files removed below. Refuse it whole.
+for dir in layouts themes mods; do
+  [ -d "$home/$dir" ] || continue
+  case "$(CDPATH='' cd -P -- "$home/$dir" && pwd)/" in
+    "$src"/*) echo "$home/$dir leads into this repo ($src): nothing to install" >&2; exit 1 ;;
+  esac
+done
+
 for dir in layouts themes; do
-  # the same guard as for the mod below: never remove the repo's own files
-  if [ -d "$home/$dir" ] && [ "$(CDPATH='' cd -P -- "$home/$dir" && pwd)" = "$(CDPATH='' cd -P -- "$src/$dir" && pwd)" ]; then
-    echo "$home/$dir is this repo's own $dir folder: nothing to install" >&2
-    exit 1
-  fi
   for f in "$src/$dir"/*; do
     [ -f "$f" ] || continue
     mkdir -p "$home/$dir"

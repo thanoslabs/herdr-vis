@@ -6,7 +6,7 @@
 # scenery (wall, floor, mountains, clouds, sun, moon, stars, props), the icons,
 # and a small pixel font for numbers.
 #
-#   python3 tools/idle-rpg-sprites.py idle-rpg/mods/idle-rpg/art
+#   python3 tools/idle-rpg-sprites.py mods/idle-rpg/art
 #
 # Edit the grids below (one character per pixel, "." is empty) and re-run.
 # Everything is drawn at 8 image pixels per art pixel and shown at 4.
