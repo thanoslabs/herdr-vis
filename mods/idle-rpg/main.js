@@ -127,11 +127,14 @@ const CLOUDS = [
 const CELL_W = 88;
 const YOU_Y = [12, FLOOR_H - 24];
 const CRITTER_Y = [16, FLOOR_H - 42];
-// The campfire between raids (see fireX): where its feet are on the floor, and
-// its picture's size (16x13 art px plus the outline's margin).
-const FIRE_Y = 32;
-const FIRE_W = 72;
-const FIRE_H = 60;
+// The campfire between raids (see fireX): where its feet are on the floor (a
+// third of the way up from its front edge), and its picture's size (52x43 art
+// px plus the outline's margin), and the width of its stretch of the night's
+// gloom (see gloom).
+const FIRE_Y = 100;
+const FIRE_W = 216;
+const FIRE_H = 180;
+const FIRE_LIGHT_W = 320;
 const CARD_W = 232;
 const SHOP_NAV_W = 78; // the kinds of item down the shop's left side
 const SHOP_ITEM_H = 78; // one thing for sale: picture, name, button
@@ -757,10 +760,12 @@ export default class RaidParty extends View {
     }
     if (joined) this.save();
     const perRow = Math.max(1, Math.floor((W - 250 - 60) / CELL_W));
+    const fire = this.fireX(W);
     for (const a of list) {
       if (this.spots[a.address]) continue;
       for (let i = 0; ; i++) {
         const s = { x: 250 + (i % perRow) * CELL_W, y: Math.floor(i / perRow) % 2 ? 104 : 64 };
+        if (fire !== null && this.clearOfFire(s, fire) !== s) continue; // never behind the campfire (the first column never is)
         const taken = Object.entries(this.spots).some(([k, o]) => live.has(k) && Math.abs(o.x - s.x) < 50 && Math.abs(o.y - s.y) < 30);
         if (!taken || i > 200) {
           this.spots[a.address] = s;
@@ -770,10 +775,28 @@ export default class RaidParty extends View {
     }
   }
 
+  // Whether someone standing at p would be in the campfire at x: anywhere
+  // across its stones and short of a step in front of them.
+  // Where someone whose spot is p stands while the campfire is at x: at p,
+  // unless that is behind the fire or in it (above its base, where the flames
+  // would hide them), then on the same row just past its nearer side. A spot
+  // below the base, in front of the stones, is left alone. For agents, who
+  // cannot stand as low as you can; the saved spot is not changed, so it is
+  // theirs again when the fire is elsewhere (a raid, another window width).
+  clearOfFire(p, x) {
+    const reach = FIRE_W / 2 + 8;
+    if (Math.abs(p.x - x) >= reach || p.y >= FIRE_Y) return p;
+    return { x: x + (p.x < x ? -reach : reach), y: p.y };
+  }
+
+  inFire(p, x) {
+    return Math.abs(p.x - x) < FIRE_W / 2 + 8 && p.y < FIRE_Y + 12;
+  }
+
   walkTo(p, W, cx) {
     const to = { x: Math.round(clamp(p.x, 30, W - 30)), y: Math.round(clamp(p.y, YOU_Y[0], YOU_Y[1])) }; // whole pixels keep the sprite sharp
     const fire = this.fireX(W);
-    if (fire !== null && Math.abs(to.x - fire) < FIRE_W / 2 + 8) to.y = Math.max(to.y, FIRE_Y + 12); // up to the campfire, not into it
+    if (fire !== null && this.inFire(to, fire)) to.y = Math.min(YOU_Y[1], FIRE_Y + 12); // up to the campfire's stones, not into them
     const dist = Math.hypot(to.x - this.you.x, to.y - this.you.y);
     this.walkMs = clamp(Math.round(dist * 4), 150, 3000);
     this.you = to;
@@ -1039,16 +1062,17 @@ export default class RaidParty extends View {
   // null while it is not drawn (in a raid, or when the scene is narrower than
   // the fight needs, 640px). It is the middle of the scene to the nearest 16px
   // (the steps its light in the gloom is drawn for, see gloom), but never
-  // nearer the stations than 464, which keeps it 16px clear of the shop's
-  // stall (its right edge, outlined under the pointer, is at 412).
+  // nearer the stations than 528, which keeps its picture 8px clear of the
+  // shop's stall (its right edge, outlined under the pointer, is at 412) and,
+  // at 640px, 4px inside the scene's right edge.
   fireX(W) {
     if (this.battle || W < 640) return null;
-    return 272 + 16 * Math.max(12, Math.round((W / 2 - 272) / 16));
+    return 272 + 16 * Math.max(16, Math.round((W / 2 - 272) / 16));
   }
 
   // The campfire, standing at x: the stones, the logs and the low heart of the
   // flames, taller flames fading in and out over them on their own rhythms
-  // (three pictures, so it flickers), two sparks hanging over it, and behind it
+  // (four pictures, so it flickers), sparks hanging over it, and behind it
   // a warm glow that flickers like a torch's and brightens at night. Every
   // motion is a native loop, so it never re-renders the view. It is scenery:
   // a press on it walks you there like one on the bare floor.
@@ -1070,13 +1094,13 @@ export default class RaidParty extends View {
       div()
         .id("idle-rpg-fire-glow")
         .absolute()
-        .left(x - 56)
-        .top(FIRE_Y - 64)
-        .w(112)
-        .h(56)
+        .left(x - FIRE_W / 2)
+        .top(FIRE_Y - 160)
+        .w(FIRE_W)
+        .h(144)
         .opacity(0.25 + 0.75 * this.night)
         .transition("opacity", { duration: TICK_MS, easing: "linear" })
-        .child(div().size_full().rounded(28).bg("#ffb34750").loop("opacity", { from: 0.55, to: 1, period: 560 })),
+        .child(div().size_full().rounded(72).bg("#ffb34750").loop("opacity", { from: 0.55, to: 1, period: 560 })),
       div()
         .absolute()
         .left(x - FIRE_W / 2)
@@ -1087,8 +1111,11 @@ export default class RaidParty extends View {
         .child(flame(1, 0, 1, 520))
         .child(flame(2, 1, 0, 740))
         .child(flame(3, 0.4, 1, 380))
-        .child(spark(40, 0, -16, 1300, 900))
-        .child(spark(24, 4, -8, 1700, 1100)),
+        .child(flame(4, 1, 0.2, 610))
+        .child(spark(120, 8, -40, 1300, 900))
+        .child(spark(76, 24, -16, 1700, 1100))
+        .child(spark(144, 36, 0, 1500, 700))
+        .child(spark(96, 0, -56, 2100, 1300)),
     ];
   }
 
@@ -1099,13 +1126,15 @@ export default class RaidParty extends View {
   // above the wall it thins out over 80px. The pictures hold all of that, so
   // this is a row of them: the candle's, one per torch, and a plain one
   // stretched over what is left. While the campfire is out (`fire`, its x, see
-  // fireX) its own 224px picture, which also carries the torches' light that
+  // fireX) its own 320px picture, which also carries the torches' light that
   // reaches it, is cut into the row over it: the pictures it overlaps are
   // clipped short on either side, so every pixel is darkened exactly once.
+  // (Its pool is dark again by the picture's edges, and those stay short of
+  // the light of any torch past the last one there is, at every width.)
   gloom(W, fire = null) {
     const RISE = 80;
     const H = RISE + WALL_H + FLOOR_H;
-    const cut = fire === null ? null : [fire - 112, fire + 112];
+    const cut = fire === null ? null : [fire - FIRE_LIGHT_W / 2, fire + FIRE_LIGHT_W / 2];
     // the picture light/<art>.png laid at `left`, `w` wide, showing only from `from` to `to`
     const piece = (left, w, art, from = left, to = left + w) =>
       from === left && to === left + w
@@ -1139,7 +1168,7 @@ export default class RaidParty extends View {
     for (; x + 276 <= W; x += 384) lay(x, 384, "torch");
     if (x < W) lay(x, W - x, "fill");
     // the fire stands 16px steps along the torches' pictures; the generator draws one for each step
-    if (cut) pieces.push(piece(cut[0], 224, `fire-${((fire - 272) / 16) % 24}`));
+    if (cut) pieces.push(piece(cut[0], FIRE_LIGHT_W, `fire-${((fire - 272) / 16) % 24}`));
     return div()
       .id("idle-rpg-gloom")
       .absolute()
@@ -1428,6 +1457,8 @@ export default class RaidParty extends View {
     this.place(list, W);
     if (this.card && this.card !== YOU && !list.some((a) => a.address === this.card)) this.card = null;
     const you = { x: Math.round(clamp(this.you.x, 30, W - 30)), y: Math.round(clamp(this.you.y, YOU_Y[0], YOU_Y[1])) };
+    const fire = this.fireX(W);
+    if (fire !== null && this.inFire(you, fire)) you.y = Math.min(YOU_Y[1], FIRE_Y + 12); // left in the fire by an older save or a resize: out in front of it
     this.you = you;
 
     // Whoever stands lower on the floor is drawn in front.
@@ -1435,14 +1466,14 @@ export default class RaidParty extends View {
     // In a fight everyone stands in formation; otherwise at their own spots.
     const foeKind = this.battle && W >= 640 ? MONSTERS[this.monster?.kind] : null;
     this.fighting = Boolean(foeKind);
-    this.at = foeKind ? this.formation(list, W, foeKind) : this.spots;
+    // (by the campfire a copy, since those behind it are drawn beside it: see the loop below)
+    this.at = foeKind ? this.formation(list, W, foeKind) : fire !== null ? { ...this.spots } : this.spots;
     const youDir = you.x <= W / 2 + (foeKind?.core.x ?? 0) ? 1 : -1; // which way the monster is from you
     this.youFights = hits > 0 && !this.walking && this.joins(W);
     this.struck = (this.youFights && this.phaseOf(YOU) === 4) || list.some((a) => a.status === "working" && this.phaseOf(a.address) === 4);
     this.youDir = youDir;
     const actors = [{ y: you.y, draw: () => [this.you_()] }, { y: MONSTER_Y, draw: () => this.foe(W, hits) }];
     // the campfire stands among them, so whoever is in front of it is drawn over it (first, so a tie goes to them)
-    const fire = this.fireX(W);
     if (fire !== null) actors.unshift({ y: FIRE_Y, draw: () => this.campfire(fire) });
     if (this.youFights) actors.push({ y: FLOOR_H, draw: () => this.attack({ key: YOU, cls: this.sprites[YOU], x: you.x, y: you.y, dir: youDir }, W, foeKind) });
     for (const a of list) {
@@ -1450,6 +1481,7 @@ export default class RaidParty extends View {
       const s = this.spots[a.address];
       s.x = Math.round(clamp(s.x, 36, W - 36));
       s.y = Math.round(s.y);
+      if (fire !== null && !foeKind) this.at[a.address] = this.clearOfFire(s, fire);
       actors.push({ y: this.at[a.address].y, draw: () => this.critter(a) });
       if (this.fighting && a.status === "working" && this.monster.hp > 0) actors.push({ y: FLOOR_H, draw: () => this.attack({ key: a.address, cls: this.sprites[a.address], ...this.at[a.address] }, W, foeKind) });
     }

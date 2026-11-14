@@ -57,7 +57,7 @@ Planning notes for growing this layout from a visualizer with a battle mode into
 - Default: buying a colourway also puts it on (one click; the default or any other owned one is a free click away).
 - Gold can never go negative; a purchase that cannot be afforded does nothing (the Buy button is dimmed).
 - **Owner's decision:** the codex, the shop and the skills are also reachable between raids, from stations on the rampart: a book on the table (codex), a merchant's stall (shop) and a training dummy (skills; the dummy was my pick, a **default**). **Built.** Starting or ending a raid closes whichever panel is open.
-- **Owner's request:** a campfire in the middle of the non-raid screen. **Built:** scenery, not clickable, drawn among the characters by depth, kept clear of the stations, with its own pool of light at night.
+- **Owner's request:** a campfire in the middle of the non-raid screen. **Built:** scenery, not clickable, drawn among the characters by depth, kept clear of the stations, with its own pool of light at night. **Owner's follow-up:** three times bigger, its base a third of the way up the plank floor. **Built:** redrawn at 52×43 art px (216×180 on screen) with its feet at floor y 100, a fourth flame, a wider light pool (320px pictures), and the walk and default spots kept out of its stones.
 - Colourways are palette swaps in `tools/idle-rpg-sprites.py` (`LOOKS`) of every picture a class has, drawn into `art/classes/<class>/<id>/`; the default's are in `art/classes/<class>/default/`. The catalogue (`SHOP` in `rules.js`) has one entry per kind of item with a list per class, and the state keeps owned and equipped per class per kind; hats were added as another kind this way, marked `shared` so that what is owned is kept once for every class.
 
 #### Hats
@@ -152,3 +152,5 @@ Planning notes for growing this layout from a visualizer with a battle mode into
 5. Monsters fighting back, once its design questions are answered.
 
 Parked beyond this: what player levels unlock, maps, resources other than gold.
+
+**Idea from the owner, not started:** seasonal decorations in town: jack-o'-lanterns in October for Halloween, and string lights and a Christmas tree in December. To decide first: whether they follow the calendar, a setting in the gear menu, or both.
