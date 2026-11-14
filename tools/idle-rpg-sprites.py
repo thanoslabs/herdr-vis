@@ -22,7 +22,7 @@
 #   monsters/   <kind>/ idle (the whole picture), blink, the pieces that move
 #               (top, base, body, tail), and roar/ for the ogre and dragon
 #   stations/   <station>/{idle,hot}, and the arrow over the one under the pointer
-#   campfire/   base, flame-1 to flame-3
+#   campfire/   base, flame-1 to flame-4
 #   light/      the night's darkness: candle, torch, fill, fire-0 to fire-23
 #   status/     over an agent's head: alert, done, z-1 to z-3, sword-l, sword-r, spark
 #   icons/      the sign's, the shop's and the settings': swords, sleep, skull,
@@ -453,72 +453,96 @@ save("scene/barrel.png", chars([
 ], {"T": "#b98047", "t": "#9a6639", "d": "#6e4525", "m": "#4a515c"}))
 
 # ---- The campfire, in the middle of the floor between raids (scenery, not a
-# station), in campfire/. "base" is the ring of stones, the logs leaning together and the
-# low heart of the flames, outlined like the sprites except the flames; it never
-# changes. "flame-1" to "-3" are taller flames laid over it, each fading in
-# and out on its own rhythm so the fire flickers. Their lower rows match the
-# heart's colours, so only the tongues change as they fade. The flames are the
-# torch's colours and, like the torch's, have no outline. 16x13, plus a pixel
-# of margin all round for the outline.
-FIRE = {"W": "#fff3b0", "y": "#ffe27a", "o": "#ff9d3c", "r": "#e2552f",
-        "g": "#9aa3ad", "G": "#7d8590", "S": "#646c78", "m": "#4a515c",   # the wall's stone
-        "b": "#7a5230", "B": "#9a6639", "d": "#5a3d22", "c": "#d9b27a"}   # wood, and its cut ends
-# `heart`, for the stones and logs: outline them, then lay the flames' heart over that
-def campfire(name, rows, heart=None):
-    g = [[None] * 18 for _ in range(15)]
-    for y, row in enumerate(chars(rows, FIRE)):
-        for x, c in enumerate(row): g[y + 1][x + 1] = c
-    if heart:
-        g = [[OUTLINE if g[y][x] is None and any(0 <= y+j < 15 and 0 <= x+i < 18 and g[y+j][x+i] for i, j in ((1,0),(-1,0),(0,1),(0,-1)))
-              else g[y][x] for x in range(18)] for y in range(15)]
-        for y, row in enumerate(heart):
-            for x, c in enumerate(row):
-                if c != ".": g[y + 1][x + 1] = FIRE[c]
-    save(name, g)
+# station), in campfire/. "base" is the ring of stones, the crossed logs, the
+# embers between them and the low heart of the flames; it never changes. The
+# stones and logs are outlined like the sprites, and each stone and log is
+# drawn inside its own outline, back to front, so they read as separate pieces.
+# "flame-1" to "-4" are the tall flames laid over it, each fading in and out on
+# its own rhythm so the fire flickers. Below row FIRE_HEART they are the
+# heart's own pixels, so only the tongues change as they fade. The flames are
+# the torch's colours, deep orange out to a near-white core, and like the
+# torch's have no outline. 52x43, plus a pixel of margin all round.
+FIRE_W, FIRE_H, FIRE_HEART = 54, 45, 27
+FLAME = ((0.68, "#fff3b0"), (0.46, "#ffe27a"), (0.22, "#ff9d3c"), (0.0, "#e2552f"))  # by heat, hottest first
+STONE = ("#c3cad2", "#9aa3ad", "#7d8590", "#646c78", "#4a515c")                    # the wall's stone, lit from the top left
+WOOD = {"hi": "#8f5e34", "mid": "#6e4525", "lo": "#4f321c", "crack": "#3b2614", "cut": "#e6c48f", "ring": "#b98047", "char": "#2a2220", "coal": "#c2401f"}
 
-FLAME_HEART = [
-    "", "", "", "", "", "",
-    "....royWWyor....",
-    "....royWWyor....",
-    ".....oyyyyo.....",
-    "......oooo......",
-]
-campfire("campfire/base.png", [
-    "",
-    "",
-    "",
-    "",
-    "",
-    "......d..d......",
-    ".....dB..Bd.....",
-    "..c.dBr..rBd.c..",
-    "..bBdBorroBdBb..",
-    "...dbbbbbbbbd...",
-    ".gGg.dbbbbd.gGg.",
-    "gGGSgGgGgGgGgGGS",
-    ".SSmSSmSSSmSSSm.",
-], FLAME_HEART)
+def fire_piece(g, inside, colour):
+    # one stone or log: its outline round it (over whatever is behind), then its own pixels
+    pts = [(x, y) for y in range(FIRE_H) for x in range(FIRE_W) if inside(x + 0.5, y + 0.5)]
+    for x, y in pts:
+        for i, j in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            if not inside(x + i + 0.5, y + j + 0.5) and 0 <= x + i < FIRE_W and 0 <= y + j < FIRE_H: g[y + j][x + i] = OUTLINE
+    for x, y in pts: g[y][x] = colour(x + 0.5, y + 0.5)
+
+def fire_stone(g, cx, cy, rx, ry, rnd):
+    def colour(x, y):
+        u, v = (x - cx) / rx, (y - cy) / ry
+        shade = 0.85 * v + 0.45 * u + rnd.uniform(-0.12, 0.12)
+        return STONE[0 if shade < -0.62 else 1 if shade < -0.12 else 2 if shade < 0.38 else 3 if shade < 0.72 else 4]
+    fire_piece(g, lambda x, y: ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 <= 1, colour)
+
+def fire_log(g, x0, y0, x1, y1, thick, rnd):
+    # a log from its sawn end (x0, y0), pale, to (x1, y1) in the flames, charred like where the fire is
+    dx, dy = x1 - x0, y1 - y0
+    n = math.hypot(dx, dy)
+    def at(x, y):  # how far along (px) and across (-1 to 1)
+        return ((x - x0) * dx + (y - y0) * dy) / n, ((x - x0) * dy - (y - y0) * dx) / n / (thick / 2)
+    def inside(x, y):
+        t, s = at(x, y)
+        return -0.5 <= t <= n + 0.5 and abs(s) <= 1
+    grain = [rnd.random() for _ in range(int(n) + 2)]
+    def colour(x, y):
+        t, s = at(x, y)
+        burnt = t > n - 6 or math.hypot((x - 27) / 1.6, y - 27) < 7
+        if t < 1.2: return WOOD["ring"] if abs(s) < 0.45 else WOOD["cut"]
+        if burnt: return WOOD["coal"] if grain[int(t)] < 0.45 and abs(s) < 0.6 else WOOD["char"]
+        side = s if dx > 0 else -s  # the upper edge catches the light
+        if grain[int(t)] < 0.2 and abs(s) < 0.6: return WOOD["crack"]   # a knot or a crack in the bark
+        return WOOD["hi"] if side > 0.35 else WOOD["lo"] if side < -0.45 else WOOD["mid"]
+    fire_piece(g, inside, colour)
+
+def flames(tongues):
+    # heat at each pixel: each tongue is (x, top, bottom, half width at the bottom, lean at the top, heat)
+    heat = [[0.0] * FIRE_W for _ in range(FIRE_H)]
+    for x0, top, bottom, width, lean, hot in tongues:
+        for y in range(int(top), int(bottom) + 1):
+            p = (y + 0.5 - top) / (bottom - top)
+            if p <= 0: continue
+            hw = width * min(1.0, p) ** 0.62
+            xc = x0 + lean * (1 - min(1.0, p)) ** 2
+            for x in range(FIRE_W):
+                h = (1 - abs(x + 0.5 - xc) / hw) * (0.2 + 0.8 * min(1.0, p)) * hot if hw > 0 else 0
+                if 0 <= y < FIRE_H and h > heat[y][x]: heat[y][x] = h
+    return [[next((c for t, c in FLAME if h > t), None) if h > 0.03 else None for h in row] for row in heat]
+
+rnd = random.Random(11)
+base = [[None] * FIRE_W for _ in range(FIRE_H)]
+ring = [(27 + 21 * math.cos(a), 35 + 5 * math.sin(a), a) for a in (math.radians(d) for d in range(15, 360, 30))]
+for x, y, a in sorted(ring, key=lambda s: s[1]):                       # the back of the ring
+    if math.sin(a) < 0: fire_stone(base, x, y, 3.8, 2.6, rnd)
+fire_piece(base, lambda x, y: ((x - 27) / 16) ** 2 + ((y - 35) / 3.5) ** 2 <= 1,  # the bed of embers
+           lambda x, y: rnd.choice(["#7a2416", WOOD["coal"], WOOD["coal"], "#e2552f", "#ff9d3c", "#ffe27a"]))
+fire_log(base, 16, 33, 29, 14, 3.4, rnd)                               # leaning together at the back
+fire_log(base, 38, 33, 25, 14, 3.4, rnd)
+heart = flames([(27, 17, 34, 11, 0, 1.0), (20, 22, 33, 6, -1, 0.8), (34, 21, 33, 6, 1, 0.8)])
+heart = [[c if y >= FIRE_HEART else None for c in row] for y, row in enumerate(heart)]
+for y in range(FIRE_H):                                                # the heart, in front of those
+    for x in range(FIRE_W): base[y][x] = heart[y][x] or base[y][x]
+for x, y, a in sorted(ring, key=lambda s: s[1]):                       # the front of the ring
+    if math.sin(a) >= 0: fire_stone(base, x, y, 4.3, 3.0, rnd)
+fire_log(base, 8, 38, 31, 12, 4.2, rnd)                                # crossed in front, resting on the stones
+fire_log(base, 46, 38, 23, 12, 4.2, rnd)
+save("campfire/base.png", base)
 for i, tongues in enumerate([
-    [".......r........",                                     # tall, leaning right, a wisp beside it
-     "......ry...r....",
-     "......ryr..r....",
-     ".....ryyor.r....",
-     ".....roWyorr....",
-     "....rroWWyor...."],
-    ["........r.......",                                     # tall, a wisp on the left
-     "....r...yr......",
-     "....r..ryr......",
-     "....r.royyr.....",
-     "....rroyWor.....",
-     "....royWWyor...."],
-    ["",                                                     # low and broad
-     "",
-     "........r.......",
-     "......r.yr......",
-     ".....ryryor.....",
-     "....royyWyor...."],
+    [(28, 1, 30, 9, 4, 1.0), (19, 12, 30, 5, -2, 0.75)],               # tall, leaning right, a tongue on the left
+    [(26, 0, 30, 9, -4, 1.0), (35, 10, 30, 5, 2, 0.75)],               # tall, leaning left, a tongue on the right
+    [(21, 9, 30, 7, -1, 0.85), (28, 6, 30, 8, 1, 0.95), (35, 11, 30, 6, 2, 0.8)],  # low and broad
+    [(24, 4, 30, 7, -2, 0.9), (31, 3, 30, 7, 3, 0.9)],                 # forked
 ], 1):
-    campfire(f"campfire/flame-{i}.png", tongues + FLAME_HEART[6:])
+    g = flames(tongues)
+    g = [[(heart[y][x] if base[y][x] == heart[y][x] else None) if y >= FIRE_HEART else c for x, c in enumerate(row)] for y, row in enumerate(g)]
+    save(f"campfire/flame-{i}.png", g)
 
 save("icons/wrench.png", chars([  # the card's, to change class; double-ended: an open jaw at each end
     ".....w.w",
@@ -610,18 +634,22 @@ TORCH_LIGHT = (48.5, 4.5, 9, 40, 1.15)
 dark("light/torch.png", 96, TORCH_LIGHT)                 # one torch's stretch of wall, the flame near the top
 dark("light/candle.png", 68, (28.5, 9, 3, 24, 1.0))      # the left end, lit only by the candle on the table
 dark("light/fill.png", 4)                                # no flame: stretched over whatever is left
-# The campfire's stretch (between raids), 56 wide with the fire in the middle,
+# The campfire's stretch (between raids), 80 wide with the fire in the middle,
 # cut into the row of pictures wherever the fire stands. The torches' pools
 # reach into it, so it carries their light as well as its own. The torches'
 # pictures start 68 art px from the left and repeat every 96, and the fire
 # stands at 68 + 4n (16 screen px steps), so "fire-<i>" is the stretch for
 # a fire 4i art px into a torch's picture (i = n mod 24). The fire's own pool is
-# centred on its flames, just above the floor's back edge (its feet are 8 art
-# px into the floor), and lights the floor around it.
-FIRE_LIGHT = (28, 15, 5, 22, 1.25)
+# centred on the heart of its flames, a few art px above its feet (which are
+# 25 art px into the floor), and lights the floor all round it. It is wholly
+# dark by the stretch's edges, so it meets the pictures beside it seamlessly.
+FIRE_LIGHT = (40, 27, 11, 36, 1.2)
+for edge in (0.5, 79.5):                                 # its first and last columns are wholly dark
+    t = min(1.0, (abs(edge - FIRE_LIGHT[0]) / FIRE_LIGHT[4] - FIRE_LIGHT[2]) / (FIRE_LIGHT[3] - FIRE_LIGHT[2]))
+    assert round(t * t * (3 - 2 * t) * 6) == 6, FIRE_LIGHT
 for i in range(24):
-    torches = [(TORCH_LIGHT[0] + 28 - 4 * i + 96 * k,) + TORCH_LIGHT[1:] for k in (-1, 0, 1)]
-    dark(f"light/fire-{i}.png", 56, FIRE_LIGHT, *torches)
+    torches = [(TORCH_LIGHT[0] + 40 - 4 * i + 96 * k,) + TORCH_LIGHT[1:] for k in (-1, 0, 1)]
+    dark(f"light/fire-{i}.png", 80, FIRE_LIGHT, *torches)
 
 # ---- Sign icons (icons/): the counts on the sign, drawn small (shown at 2 screen px a pixel) ----
 icon("icons/swords.png", [                                  # working
