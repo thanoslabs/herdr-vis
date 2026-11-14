@@ -72,7 +72,7 @@ const ART = "mods/idle-rpg/art";
 // shared: { version, you: {x, y}, spots: { <address>: {x, y} }, sprites: { you | <address>: <class> },
 //   seen, battle, monster, slain, gold, kills: { <kind>: n }, xp: { you | <class>: n },
 //   skills: { <class>: { power, haste, crit } },
-//   looks: { <class>: { colour: { owned: [<id>], equipped: <id> } } } } (see loadState)
+//   looks: { <class>: { armour | weapon | hat: { owned: [<id>], equipped: <id> } } } } (see loadState)
 const STATE = "idle-rpg.state";
 const randomClass = () => CLASSES[Math.floor(Math.random() * CLASSES.length)];
 const STATUS = {
@@ -109,6 +109,9 @@ const CELL_W = 88;
 const YOU_Y = [12, FLOOR_H - 24];
 const CRITTER_Y = [16, FLOOR_H - 42];
 const CARD_W = 232;
+const SHOP_NAV_W = 78; // the kinds of item down the shop's left side
+const SHOP_ITEM_H = 78; // one thing for sale: picture, name, button
+const SHOP_ICONS = { armour: "i-armour", weapon: "sword-l", hat: "i-hat" };
 // Battle mode. Sizes are on-screen px (art px x 4, plus the outline). A new
 // kind also needs its HP in MONSTER_HP in rules.js, which lists the kinds.
 const MONSTERS = {
@@ -239,7 +242,7 @@ export default class RaidParty extends View {
     this.codex = false; // the list of kills by kind is open under the sign
     this.skillsOpen = null; // the class the skills panel under the sign shows, while it is open
     this.shopOpen = null; // the class the shop under the sign shows, while it is open
-    this.shopKind = SHOP_KINDS[0]; // the kind of item it shows (only colourways for now)
+    this.shopKind = SHOP_KINDS[0]; // the kind of item it shows: the one picked down its left side
     this.picking = false; // the open card is showing the class choices
     this.walking = false;
     this.walkTask = null;
@@ -355,7 +358,7 @@ export default class RaidParty extends View {
   // The path of one of class `cls`'s pictures in the colourway it has
   // equipped, or in `colour` (the shop's previews). `frame` is what follows
   // the name, one of FRAMES in rules.js: "" standing, "-walk-l", "-f-r" and so on.
-  look(cls, frame = "", colour = equipped(this.progress, cls, "colour")) {
+  look(cls, frame = "", colour = equipped(this.progress, cls, "armour")) {
     return `${ART}/${lookArt(cls, colour)}${frame}.png`;
   }
 
@@ -1651,14 +1654,34 @@ export default class RaidParty extends View {
   // picked, everything of one kind the shop sells: a preview of the sprite in
   // it, its name, and "Equipped", an Equip button (owned) or a Buy button with
   // its price, dimmed and dead while the gold is short. Buying puts it on as
-  // well; buying and equipping save straight away. Only colourways for now:
-  // another kind in SHOP (rules.js) gets a row of tabs over the items and a
-  // preview of its own. Short enough for the scene at its lowest (230px, the
-  // sign taking 54).
+  // well; buying and equipping save straight away. Down its left side are the
+  // kinds of item (SHOP in rules.js): armours, weapons, hats, with room under
+  // them for more. A kind with nothing for sale yet says so. Short enough for
+  // the scene at its lowest (230px, the sign taking 54).
   shopCard(left) {
     const cls = this.shopOpen;
     const kind = SHOP_KINDS.includes(this.shopKind) ? this.shopKind : SHOP_KINDS[0];
-    const preview = { colour: (it) => image(this.look(cls, "", it.id)).w(36).h(36) };
+    const items = catalogue(cls, kind);
+    const preview = { armour: (it) => image(this.look(cls, "", it.id)).w(36).h(36) };
+    const nav = (k) =>
+      h_flex()
+        .id(`idle-rpg-shop-kind-${k}`)
+        .gap(5)
+        .items_center()
+        .px(4)
+        .py(3)
+        .rounded(6)
+        .border(1)
+        .border_color(k === kind ? "#5cc8ff" : "#00000000")
+        .bg(k === kind ? "#5cc8ff22" : "#ffffff0a")
+        .cursor_pointer()
+        .hover((st) => st.bg("#ffffff1c"))
+        .on_click((_e, cx) => {
+          this.shopKind = k;
+          cx.notify();
+        })
+        .child(image(`${ART}/${SHOP_ICONS[k] ?? "i-coin"}.png`).w(18).h(18))
+        .child(div().text_size(10).font_semibold().text_color(CREAM).child(SHOP[k].name));
     const tab = (id, on, act, ...content) =>
       v_flex()
         .id(id)
@@ -1682,6 +1705,7 @@ export default class RaidParty extends View {
         .id(`idle-rpg-shop-item-${it.id}`)
         .flex_1()
         .min_w(0)
+        .h(SHOP_ITEM_H)
         .items_center()
         .gap(2)
         .py(3)
@@ -1708,9 +1732,9 @@ export default class RaidParty extends View {
       .absolute()
       .left(left)
       .top(54)
-      .w(CARD_W)
+      .w(SHOP_NAV_W + 8 + CARD_W)
       .p(8)
-      .gap(3)
+      .gap(6)
       .rounded(8)
       .bg("#101a2cf0")
       .border(1)
@@ -1741,30 +1765,51 @@ export default class RaidParty extends View {
       )
       .child(
         h_flex()
-          .gap(4)
-          .children(
-            CLASSES.map((c) =>
-              tab(
-                `idle-rpg-shop-${c}`,
-                c === cls,
-                () => (this.shopOpen = c),
-                image(this.look(c)).w(24).h(24),
-                div().text_size(9).font_semibold().text_color(CREAM).child(capital(c)),
+          .gap(8)
+          .items_start()
+          .child(
+            // down the left: the kinds of item, and room for more
+            v_flex()
+              .w(SHOP_NAV_W)
+              .flex_none()
+              .gap(3)
+              .children(SHOP_KINDS.map(nav))
+              .child(div().px(4).pt(2).text_size(9).text_color("#8ea3bb").child("More soon")),
+          )
+          .child(
+            v_flex()
+              .flex_1()
+              .min_w(0)
+              .gap(3)
+              .child(
+                h_flex()
+                  .gap(4)
+                  .children(
+                    CLASSES.map((c) =>
+                      tab(
+                        `idle-rpg-shop-${c}`,
+                        c === cls,
+                        () => (this.shopOpen = c),
+                        image(this.look(c)).w(24).h(24),
+                        div().text_size(9).font_semibold().text_color(CREAM).child(capital(c)),
+                      ),
+                    ),
+                  ),
+              )
+              .child(
+                items.length
+                  ? h_flex().gap(4).children(items.map(item))
+                  : // the same height as a row of items, so the panel does not jump between kinds
+                    v_flex()
+                      .h(SHOP_ITEM_H)
+                      .items_center()
+                      .justify_center()
+                      .rounded(6)
+                      .bg("#ffffff0a")
+                      .text_color("#8ea3bb")
+                      .child(`No ${SHOP[kind].name.toLowerCase()} for sale yet`),
               ),
-            ),
           ),
-      )
-      .when(SHOP_KINDS.length > 1, (el) =>
-        el.child(
-          h_flex()
-            .gap(4)
-            .children(
-              SHOP_KINDS.map((k) =>
-                tab(`idle-rpg-shop-kind-${k}`, k === kind, () => (this.shopKind = k), div().text_size(10).text_color(CREAM).child(SHOP[k].name)),
-              ),
-            ),
-        ),
-      )
-      .child(h_flex().gap(4).children(catalogue(cls, kind).map(item)));
+      );
   }
 }

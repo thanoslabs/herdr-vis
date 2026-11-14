@@ -61,8 +61,9 @@ export const ATTACK_JITTER = 2;
 // The shop. Gold buys looks for a class (never an agent, which is short-lived):
 // everyone with that class on, agents and you alike, wears what the class has
 // equipped. Each kind of item has a catalogue per class, and each class keeps,
-// per kind, what it owns and which one it has on. Only colourways for now;
-// hats and other sprites would be more kinds in SHOP. The first item of every
+// per kind, what it owns and which one it has on. Armours (colourways of the
+// whole outfit) are the only kind with anything for sale so far; weapons and
+// hats are there as kinds, for the shop to list, with empty catalogues. The first item of every
 // catalogue is the class's default look: free, always owned. Buying is for
 // good (no refunds), and changing between owned items is free.
 export const DEFAULT_LOOK = "default";
@@ -77,12 +78,14 @@ const COLOUR_NAMES = {
 };
 // Kinds of item: { name (for the shop), items: { <class>: [{ id, name, price }] } }.
 export const SHOP = {
-  colour: {
-    name: "Colours",
+  armour: {
+    name: "Armours",
     items: Object.fromEntries(
       CLASSES.map((c) => [c, COLOUR_NAMES[c].map(([id, name], i) => ({ id, name, price: i ? COLOUR_PRICES[i - 1] : 0 }))]),
     ),
   },
+  weapon: { name: "Weapons", items: Object.fromEntries(CLASSES.map((c) => [c, []])) },
+  hat: { name: "Hats", items: Object.fromEntries(CLASSES.map((c) => [c, []])) },
 };
 export const SHOP_KINDS = Object.keys(SHOP);
 
@@ -339,7 +342,7 @@ export function equip(progress, cls, kind, id) {
 // unknown class the first one, so no other string can end up in a path.
 export function lookArt(cls, colour) {
   const c = CLASSES.includes(cls) ? cls : CLASSES[0];
-  return colour !== DEFAULT_LOOK && itemOf(c, "colour", colour) ? `${c}-${colour}` : c;
+  return colour !== DEFAULT_LOOK && itemOf(c, "armour", colour) ? `${c}-${colour}` : c;
 }
 
 // A class's saved looks: per kind, the items it owns, in catalogue order with
@@ -348,11 +351,16 @@ export function lookArt(cls, colour) {
 function looksOf(saved, cls) {
   return Object.fromEntries(
     SHOP_KINDS.map((kind) => {
-      const slot = record(saved) && has(saved, kind) && record(saved[kind]) ? saved[kind] : {};
+      // armours were first saved as "colour"
+      const key = record(saved) && !has(saved, kind) && kind === "armour" ? "colour" : kind;
+      const slot = record(saved) && has(saved, key) && record(saved[key]) ? saved[key] : {};
       const list = Array.isArray(slot.owned) ? slot.owned : [];
-      const owned = catalogue(cls, kind)
-        .map((it) => it.id)
-        .filter((id) => id === DEFAULT_LOOK || list.includes(id));
+      const owned = [
+        DEFAULT_LOOK, // also for a kind with nothing for sale yet
+        ...catalogue(cls, kind)
+          .map((it) => it.id)
+          .filter((id) => id !== DEFAULT_LOOK && list.includes(id)),
+      ];
       return [kind, { owned, equipped: owned.includes(slot.equipped) ? slot.equipped : DEFAULT_LOOK }];
     }),
   );

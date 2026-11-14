@@ -51,7 +51,7 @@ Planning notes for growing this layout from a visualizer with a battle mode into
 
 ### Customisation shop
 
-- **Decided:** colours first, then hats and alternate sprites. **Colours built**: a shop opened from the gold on the sign; hats and alternate sprites **not built**.
+- **Decided:** colours first, then hats and alternate sprites. **Colours built**, sold as "Armours": a shop opened from the gold on the sign, with the kinds of item down its left side (Armours, Weapons, Hats, and room for more). **Owner's decision:** the shop is laid out by category this way because much more is planned for it. Weapons, hats and alternate sprites are **not built**: their categories are there and empty.
 - Default: a look belongs to a class, not to an agent (agents are short-lived and forgotten after a week). Every character with that class on, agents and the player alike, wears the colourway the class has equipped.
 - Default: each class has its default colourway (free, always owned) and three more to buy, priced 5, 10 and 20 gold (`COLOUR_PRICES`). Buying is permanent; an owned colourway can be equipped and swapped freely at no cost. No refunds, no selling.
 - Default: buying a colourway also puts it on (one click; the default or any other owned one is a free click away).

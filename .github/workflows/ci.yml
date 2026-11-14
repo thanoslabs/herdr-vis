@@ -56,7 +56,7 @@ jobs:
           import { existsSync } from "node:fs";
           import { CLASSES, FRAMES, catalogue, lookArt } from "./idle-rpg/mods/idle-rpg/rules.js";
           const missing = CLASSES.flatMap((c) =>
-            catalogue(c, "colour").flatMap((it) => FRAMES.map((f) => `idle-rpg/mods/idle-rpg/art/${lookArt(c, it.id)}${f}.png`)),
+            catalogue(c, "armour").flatMap((it) => FRAMES.map((f) => `idle-rpg/mods/idle-rpg/art/${lookArt(c, it.id)}${f}.png`)),
           ).filter((p) => !existsSync(p));
           if (missing.length) {
             console.error(`Missing art:\n${missing.join("\n")}`);

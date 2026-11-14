@@ -464,6 +464,23 @@ icon("i-skull.png", [                                   # slain
     ".wwwww.",
     ".wkwkw.",
 ], {"w": "#ece6d6", "k": "#2a2433"})
+icon("i-armour.png", [                                  # the shop's armours
+    "aa...aa",
+    "aAaaaAa",
+    ".aAAAa.",
+    ".aAaAa.",
+    ".aAAAa.",
+    ".aaAaa.",
+    "..aaa..",
+], SWORD)
+icon("i-hat.png", [                                     # the shop's hats
+    "...b...",
+    "..bb...",
+    "..bBb..",
+    ".bbBb..",
+    ".ggggg.",
+    "bbbbbbb",
+], {"b": "#4a6fd0", "B": "#7fa0ee", "g": "#f2c14e"})
 icon("i-coin.png", [                                    # gold
     "..ggg..",
     ".gyyyg.",
