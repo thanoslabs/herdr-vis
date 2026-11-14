@@ -240,6 +240,7 @@ export default class RaidParty extends View {
     this.drag = null; // { address, x, y, vx, last } while a critter dangles
     this.card = null; // whose card is open: an agent's address, or YOU
     this.codex = false; // the list of kills by kind is open under the sign
+    this.hot = null; // the station under the pointer: "codex" | "skills" | "shop"
     this.skillsOpen = null; // the class the skills panel under the sign shows, while it is open
     this.shopOpen = null; // the class the shop under the sign shows, while it is open
     this.shopKind = SHOP_KINDS[0]; // the kind of item it shows: the one picked down its left side
@@ -1468,21 +1469,39 @@ export default class RaidParty extends View {
   // floor; they stand at the back, between the banners and torches.
   stations() {
     const spare = CLASSES.reduce((sum, c) => sum + pointsLeft(this.progress, c), 0);
-    const station = (id, left, top, w, h, name, act, ...inside) =>
-      div()
+    // Under the pointer a station shows it can be used: a soft glow behind
+    // it, its picture hopping up a pixel of art, and its name turning gold.
+    const station = (id, left, top, w, h, name, act, ...inside) => {
+      const hot = this.hot === id;
+      return div()
         .id(`idle-rpg-station-${id}`)
         .absolute()
         .left(left)
         .top(top)
         .w(w)
         .h(h)
+        .rounded(8)
+        .bg(hot ? "#fff2b02e" : "#fff2b000")
         .cursor_pointer()
+        .on_hover((hovered, cx) => {
+          if (hovered) this.hot = id;
+          else if (this.hot === id) this.hot = null;
+          cx.notify();
+        })
         .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
         .on_click((_e, cx) => {
           act();
           cx.notify();
         })
-        .children(inside)
+        .child(
+          div()
+            .id(`idle-rpg-station-${id}-art`)
+            .absolute()
+            .left(0)
+            .top(hot ? -4 : 0)
+            .transition("top", { duration: 120, easing: "ease-out" })
+            .children(inside),
+        )
         .child(
           h_flex()
             .absolute()
@@ -1490,8 +1509,18 @@ export default class RaidParty extends View {
             .top(h + 3)
             .w(80)
             .justify_center()
-            .child(div().px(5).rounded(7).bg("#00000066").text_size(10).font_semibold().text_color(CREAM).child(name)),
+            .child(
+              div()
+                .px(5)
+                .rounded(7)
+                .bg(hot ? "#000000a8" : "#00000066")
+                .text_size(10)
+                .font_semibold()
+                .text_color(hot ? GOLD : CREAM)
+                .child(name),
+            ),
         );
+    };
     const art = (name, w, h, left = 0, top = 0) =>
       div()
         .absolute()
