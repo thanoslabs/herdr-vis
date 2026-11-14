@@ -23,8 +23,9 @@
 // that class a skill point, spent in the skills panel on Power (damage),
 // Haste (attack speed) or Crit (double damage now and then). Levels show on
 // the cards and the class choices, gold, kills and points to spend on the sign.
-// Gold buys colourways for a class in the shop (the coin on the sign); everyone
-// with that class on wears the one it has equipped.
+// Gold buys colourways and hats for a class in the shop (the coin on the
+// sign); everyone with that class on wears what it has equipped. A hat is
+// bought once for every class, and each class picks its own.
 // Layout props: { inset } = left edge of the sign (84 leaves room for macOS buttons).
 
 import { View, div, image } from "gpui-kit";
@@ -54,6 +55,7 @@ import {
   equip,
   equipped,
   firstAttack,
+  hatArt,
   loadState,
   lookArt,
   monsterHp,
@@ -72,7 +74,8 @@ const ART = "mods/idle-rpg/art";
 // shared: { version, you: {x, y}, spots: { <address>: {x, y} }, sprites: { you | <address>: <class> },
 //   seen, battle, monster, slain, gold, kills: { <kind>: n }, xp: { you | <class>: n },
 //   skills: { <class>: { power, haste, crit } },
-//   looks: { <class>: { armour | weapon | hat: { owned: [<id>], equipped: <id> } } } } (see loadState)
+//   looks: { <class>: { armour | weapon: { owned: [<id>], equipped: <id> }, hat: { equipped: <id> } } },
+//   hats: [<id>] } (hats are owned by every class; see loadState)
 const STATE = "idle-rpg.state";
 const randomClass = () => CLASSES[Math.floor(Math.random() * CLASSES.length)];
 const STATUS = {
@@ -200,7 +203,7 @@ export default class RaidParty extends View {
     this.seen = saved.seen; // <address>: when it was last here
     this.battle = saved.battle;
     this.monster = saved.monster; // { kind, hp, maxHp, id, slainAt? }
-    this.progress = { slain: saved.slain, gold: saved.gold, kills: saved.kills, xp: saved.xp, skills: saved.skills, looks: saved.looks };
+    this.progress = { slain: saved.slain, gold: saved.gold, kills: saved.kills, xp: saved.xp, skills: saved.skills, looks: saved.looks, hats: saved.hats };
     this.cheerSeq = 0;
     // These three are keyed by address, so they have no prototype to collide with.
     this.cheers = Object.create(null); // YOU | <address>: { lines, id, at } while a level-up note shows
@@ -361,6 +364,22 @@ export default class RaidParty extends View {
   // the name, one of FRAMES in rules.js: "" standing, "-walk-l", "-f-r" and so on.
   look(cls, frame = "", colour = equipped(this.progress, cls, "armour")) {
     return `${ART}/${lookArt(cls, colour)}${frame}.png`;
+  }
+
+  // One of class `cls`'s pictures as an element `w` by `h`, wherever a class
+  // is drawn: the picture (see look) with the hat the class has on, or `hat`
+  // (the shop's previews), laid over it at the same size and place. The hat's
+  // picture is the same canvas as the frame under it, so there is nothing to
+  // line up. No hat, no overlay.
+  sprite(cls, frame, w, h, colour = equipped(this.progress, cls, "armour"), hat = equipped(this.progress, cls, "hat")) {
+    const top = hatArt(cls, hat);
+    return div()
+      .relative()
+      .flex_none()
+      .w(w)
+      .h(h)
+      .child(image(this.look(cls, frame, colour)).w(w).h(h))
+      .when(Boolean(top), (el) => el.child(div().absolute().left(0).top(0).child(image(`${ART}/${top}${frame}.png`).w(w).h(h))));
   }
 
   // Starts the attack clock if it is stopped and anyone is ready to attack.
@@ -776,8 +795,8 @@ export default class RaidParty extends View {
     const phase = this.phaseOf(a.address);
     const frame = !fighting || !(this.monster?.hp > 0) ? "f" : phase === 1 ? "a1" : phase === 2 || phase === 3 ? "a2" : "f";
     const pose = this.fighting
-      ? div().relative().w(72).h(72).child(div().absolute().left(dir > 0 ? 0 : -24).top(0).child(image(this.look(c, `-${frame}-${dir > 0 ? "r" : "l"}`)).w(96).h(72)))
-      : image(this.look(c)).w(72).h(72);
+      ? div().relative().w(72).h(72).child(div().absolute().left(dir > 0 ? 0 : -24).top(0).child(this.sprite(c, `-${frame}-${dir > 0 ? "r" : "l"}`, 96, 72)))
+      : this.sprite(c, "", 72, 72);
     const where = `${a.space_name} · ${a.tab_name}`;
     const open = this.card === a.address;
     return [
@@ -908,7 +927,7 @@ export default class RaidParty extends View {
       .absolute()
       .left(d.x - 44)
       .top(d.y - 78)
-      .child(image(this.look(c, `-rag-${tilt}`)).w(88).h(88));
+      .child(this.sprite(c, `-rag-${tilt}`, 88, 88));
   }
 
   you_() {
@@ -945,15 +964,9 @@ export default class RaidParty extends View {
                   .absolute()
                   .left(this.youDir > 0 ? 0 : -24)
                   .top(0)
-                  .child(
-                    image(
-                      this.look(c, `-${!this.youFights ? "f" : [0, "a1", "a2", "a2", 0][this.phaseOf(YOU)] || "f"}-${this.youDir > 0 ? "r" : "l"}`),
-                    )
-                      .w(96)
-                      .h(72),
-                  ),
+                  .child(this.sprite(c, `-${!this.youFights ? "f" : [0, "a1", "a2", "a2", 0][this.phaseOf(YOU)] || "f"}-${this.youDir > 0 ? "r" : "l"}`, 96, 72)),
               )
-          : image(this.look(c, this.walking ? (this.step ? "-walk-r" : "-walk-l") : "")).w(72).h(72),
+          : this.sprite(c, this.walking ? (this.step ? "-walk-r" : "-walk-l") : "", 72, 72),
       )
       .child(div().px(6).rounded(7).bg(this.card === YOU ? "#00000080" : "#00000040").text_size(10).font_semibold().text_color(CREAM).child("You"));
   }
@@ -1013,7 +1026,7 @@ export default class RaidParty extends View {
               this.save();
               cx.notify();
             })
-            .child(image(this.look(c)).w(36).h(36))
+            .child(this.sprite(c, "", 36, 36))
             .child(div().text_size(9).font_semibold().text_color(GOLD).child(`Lv ${classLevel(this.progress.xp[c]).level}`)),
         ),
       );
@@ -1032,8 +1045,15 @@ export default class RaidParty extends View {
       .bg("#22395a")
       .border(1)
       .border_color("#31506f")
-      // the sprite at 6px a pixel, shifted so the head fills the frame
-      .child(div().absolute().left(-26).top(-10).child(image(this.look(this.sprites[key])).w(108).h(108)))
+      // the sprite at 6px a pixel, shifted so the head fills the frame (a
+      // pixel lower in a hat, whose top can reach the picture's first row)
+      .child(
+        div()
+          .absolute()
+          .left(-26)
+          .top(hatArt(this.sprites[key], equipped(this.progress, this.sprites[key], "hat")) ? -4 : -10)
+          .child(this.sprite(this.sprites[key], "", 108, 108)),
+      )
       .child(
         div()
           .id("idle-rpg-card-wrench")
@@ -1689,7 +1709,7 @@ export default class RaidParty extends View {
           this.skillsOpen = c;
           cx.notify();
         })
-        .child(image(this.look(c)).w(24).h(24))
+        .child(this.sprite(c, "", 24, 24))
         .child(
           h_flex()
             .gap(3)
@@ -1760,19 +1780,22 @@ export default class RaidParty extends View {
   }
 
   // The shop, under the sign like the skills panel: your gold, the four
-  // classes to pick from (each in the colourway it has on), then for the one
-  // picked, everything of one kind the shop sells: a preview of the sprite in
-  // it, its name, and "Equipped", an Equip button (owned) or a Buy button with
-  // its price, dimmed and dead while the gold is short. Buying puts it on as
-  // well; buying and equipping save straight away. Down its left side are the
-  // kinds of item (SHOP in rules.js): armours, weapons, hats, with room under
-  // them for more. A kind with nothing for sale yet says so. Short enough for
-  // the scene at its lowest (230px, the sign taking 54).
+  // classes to pick from (each in the colourway and hat it has on), then for
+  // the one picked, everything of one kind the shop sells: a preview of the
+  // sprite in it, its name, and "Equipped", an Equip button (owned) or a Buy
+  // button with its price, dimmed and dead while the gold is short. Buying
+  // puts it on as well; buying and equipping save straight away. Down its left
+  // side are the kinds of item (SHOP in rules.js): armours, weapons, hats, with
+  // room under them for more. A hat is bought once for every class, which the
+  // panel says under them while hats are shown; each class still has its own
+  // on. A kind with nothing for sale yet says so. Short enough for the scene
+  // at its lowest (230px, the sign taking 54).
   shopCard(left) {
     const cls = this.shopOpen;
     const kind = SHOP_KINDS.includes(this.shopKind) ? this.shopKind : SHOP_KINDS[0];
     const items = catalogue(cls, kind);
-    const preview = { armour: (it) => image(this.look(cls, "", it.id)).w(36).h(36) };
+    // each armour with the class's hat on, each hat over the class's armour
+    const preview = { armour: (it) => this.sprite(cls, "", 36, 36, it.id), hat: (it) => this.sprite(cls, "", 36, 36, undefined, it.id) };
     const nav = (k) =>
       h_flex()
         .id(`idle-rpg-shop-kind-${k}`)
@@ -1884,7 +1907,8 @@ export default class RaidParty extends View {
               .flex_none()
               .gap(3)
               .children(SHOP_KINDS.map(nav))
-              .child(div().px(4).pt(2).text_size(9).text_color("#8ea3bb").child("More soon")),
+              // under the hats, in place of "More soon": what one costs buys it for everyone
+              .child(div().px(4).pt(2).text_size(9).text_color(SHOP[kind].shared ? GOLD : "#8ea3bb").child(SHOP[kind].shared ? "Bought once, for every class" : "More soon")),
           )
           .child(
             v_flex()
@@ -1900,7 +1924,7 @@ export default class RaidParty extends View {
                         `idle-rpg-shop-${c}`,
                         c === cls,
                         () => (this.shopOpen = c),
-                        image(this.look(c)).w(24).h(24),
+                        this.sprite(c, "", 24, 24),
                         div().text_size(9).font_semibold().text_color(CREAM).child(capital(c)),
                       ),
                     ),
