@@ -26,6 +26,17 @@ jobs:
             exit 1
           fi
 
+      - name: Check for stray pictures
+        run: |
+          # Pictures live in a mod's art/ folder, or are the layout's preview.png
+          # or battle.gif: anywhere else is a generator run into the wrong folder.
+          found="$(git ls-files '*.png' '*.gif' | grep -v -E '^(mods/[^/]+/art/|preview\.png$|battle\.gif$)' || true)"
+          if [ -n "$found" ]; then
+            echo "Error: pictures outside a mod's art folder:"
+            echo "$found" | head -20
+            exit 1
+          fi
+
       - name: Validate YAML and JSON files
         run: |
           status=0
@@ -41,7 +52,7 @@ jobs:
         run: |
           sh -n install.sh
           python3 -m py_compile tools/*.py
-          for f in */mods/*/*.js; do
+          for f in mods/*/*.js; do
             node --input-type=module --check < "$f" || { echo "Syntax error: $f"; exit 1; }
           done
 
@@ -51,9 +62,9 @@ jobs:
           # all), and nothing else: no stray file, folder entry or link
           out="$(mktemp -d)"
           python3 tools/idle-rpg-sprites.py "$out" > /dev/null
-          diff <(cd "$out" && find . ! -type d | LC_ALL=C sort) <(cd idle-rpg/mods/idle-rpg/art && find . ! -type d | LC_ALL=C sort) \
+          diff <(cd "$out" && find . ! -type d | LC_ALL=C sort) <(cd mods/idle-rpg/art && find . ! -type d | LC_ALL=C sort) \
             || { echo "art/ and the generator disagree: regenerate it"; exit 1; }
-          diff <(cd "$out" && find . -type d | LC_ALL=C sort) <(cd idle-rpg/mods/idle-rpg/art && find . -type d | LC_ALL=C sort) \
+          diff <(cd "$out" && find . -type d | LC_ALL=C sort) <(cd mods/idle-rpg/art && find . -type d | LC_ALL=C sort) \
             || { echo "art/ has folders the generator does not write"; exit 1; }
           # and every picture the rules can ask for is there: each class in each
           # colourway, each weapon's layer for its class in every picture it has
@@ -63,8 +74,8 @@ jobs:
           # main.js names outright
           node --input-type=module <<'EOF'
           import { existsSync, readFileSync } from "node:fs";
-          import { ATTACK_PARTS, CLASSES, FRAMES, GLYPHS, GLYPH_COLOURS, KINDS, MONSTER_ART, WEAPON_FRAMES, attackArt, catalogue, glyphArt, hatArt, lookArt, monsterArt, weaponArt } from "./idle-rpg/mods/idle-rpg/rules.js";
-          const dir = "idle-rpg/mods/idle-rpg";
+          import { ATTACK_PARTS, CLASSES, FRAMES, GLYPHS, GLYPH_COLOURS, KINDS, MONSTER_ART, WEAPON_FRAMES, attackArt, catalogue, glyphArt, hatArt, lookArt, monsterArt, weaponArt } from "./mods/idle-rpg/rules.js";
+          const dir = "mods/idle-rpg";
           const unknown = KINDS.filter((k) => !MONSTER_ART[k]);
           if (unknown.length) {
             console.error(`Kinds with no MONSTER_ART: ${unknown.join(", ")}`);
@@ -112,12 +123,12 @@ jobs:
       - name: Install into an empty Herdr home
         run: |
           home="$(mktemp -d)"
-          HERDR_APP_HOME="$home" ./install.sh idle-rpg
+          HERDR_APP_HOME="$home" ./install.sh idle-rpg   # the name it used to take is still accepted
           test -f "$home/layouts/idle-rpg.json"
           test -f "$home/mods/idle-rpg/main.js"
           test -f "$home/mods/idle-rpg/rules.js"
           test -f "$home/mods/idle-rpg/art/scene/wall.png"
-          diff -r idle-rpg/mods/idle-rpg/art "$home/mods/idle-rpg/art"
+          diff -r mods/idle-rpg/art "$home/mods/idle-rpg/art"
 
       - name: Upgrade an install with stale art
         run: |
@@ -129,14 +140,14 @@ jobs:
           mkdir -p "$home/mods/idle-rpg/art"
           touch "$home/mods/idle-rpg/art/wizard.png" "$home/mods/idle-rpg/art/glyph-white-1.png" "$home/mods/idle-rpg/jsconfig.json"
           ln -s "$outside" "$home/mods/idle-rpg/art/elsewhere"
-          HERDR_APP_HOME="$home" ./install.sh idle-rpg
-          diff -r idle-rpg/mods/idle-rpg/art "$home/mods/idle-rpg/art"
+          HERDR_APP_HOME="$home" ./install.sh
+          diff -r mods/idle-rpg/art "$home/mods/idle-rpg/art"
           test -f "$home/mods/idle-rpg/jsconfig.json"
           test -f "$outside/keep.png"
           # re-running over a symlinked art/ replaces the link, not what it points to
           rm -rf "$home/mods/idle-rpg/art"
           ln -s "$outside" "$home/mods/idle-rpg/art"
-          HERDR_APP_HOME="$home" ./install.sh idle-rpg
+          HERDR_APP_HOME="$home" ./install.sh
           test ! -L "$home/mods/idle-rpg/art"
           test -f "$outside/keep.png"
-          diff -r idle-rpg/mods/idle-rpg/art "$home/mods/idle-rpg/art"
+          diff -r mods/idle-rpg/art "$home/mods/idle-rpg/art"

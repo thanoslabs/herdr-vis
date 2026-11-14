@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Agent workspace visualizers for the [Herdr](https://herdr.dev) desktop app. Each top-level folder (currently `idle-rpg/`) is one layout, laid out like Herdr's config folder so `install.sh` can copy it into `~/.config/herdr-app`.
+Idle RPG, a layout for the [Herdr](https://herdr.dev) desktop app that shows coding agents as a raid party. The repo root is the layout, laid out like Herdr's config folder (`layouts/`, `mods/`, `themes/`) so Herdr's gallery finds it and `install.sh` can copy it into `~/.config/herdr-app`.
 
 ## Tech stack
 
@@ -15,16 +15,15 @@ Agent workspace visualizers for the [Herdr](https://herdr.dev) desktop app. Each
 
 ```
 .
-├── idle-rpg/                      # One visualizer
-│   ├── layouts/              # idle-rpg.json, idle-rpg.svg (settings preview)
-│   ├── mods/idle-rpg/             # main.js, rules.js, mod.json, art/ (PNGs in folders by entity, then animation)
-│   ├── themes/               # idle-rpg.json
-│   ├── RECIPE.md             # Brief another agent could rebuild it from
-│   ├── PLAN.md               # Planning notes for growing it into an idle RPG
-│   ├── preview.png           # Still, for Herdr's gallery
-│   └── battle.gif            # Battle mode in motion, for the README
+├── layouts/                  # idle-rpg.json, idle-rpg.svg (settings preview)
+├── mods/idle-rpg/            # main.js, rules.js, mod.json, art/ (PNGs in folders by entity, then animation)
+├── themes/                   # idle-rpg.json
+├── RECIPE.md                 # Brief another agent could rebuild it from
+├── PLAN.md                   # Planning notes for growing it into an idle RPG
+├── preview.png               # Still, for Herdr's gallery
+├── battle.gif                # Battle mode in motion, for the README
 ├── tools/                    # idle-rpg-sprites.py: generates every PNG in art/ (the whole folder tree)
-├── install.sh                # Copies a visualizer into ~/.config/herdr-app
+├── install.sh                # Copies the layout into ~/.config/herdr-app
 ├── .github/                  # CODEOWNERS, Renovate config, workflows (CI, release, Renovate)
 ├── .tool-versions            # Pinned tool versions (asdf/mise)
 ├── AGENTS.md
@@ -34,12 +33,12 @@ Agent workspace visualizers for the [Herdr](https://herdr.dev) desktop app. Each
 └── renovate.json
 ```
 
-## Working on a visualizer
+## Working on the layout
 
 - The reference for layouts, mods and the `herdr` module is `~/.config/herdr-app/AGENTS.md` and the `.d.ts` files beside it, rewritten by the app to match the installed version. Read them before changing a mod.
-- Edit files in the repo, then run `./install.sh idle-rpg` to copy them into Herdr. After every mod change run `herdr-app check <mod folder>`, then `herdr-app status` with the layout shown. `check` renders with no agents, so test agent-dependent code with a hard-coded fake agent.
+- Edit files in the repo, then run `./install.sh` to copy them into Herdr. After every mod change run `herdr-app check <mod folder>`, then `herdr-app status` with the layout shown. `check` renders with no agents, so test agent-dependent code with a hard-coded fake agent.
 - `herdr-app shot <file.png>` captures the window for visual checks.
-- Keep each visualizer's `RECIPE.md`, `preview.png` and `battle.gif` in step with its files.
+- Keep `RECIPE.md`, `preview.png` and `battle.gif` in step with the layout's files.
 - Art is original. Do not copy characters or artwork from existing games or products.
 - `art/` is organised by entity, then by animation, with short names inside (`classes/<class>/<look>/walk/l.png`, `monsters/dragon/roar/top.png`); the generator's header and `RECIPE.md` list the folders. A picture whose path depends on the state or an agent gets it from a builder in `rules.js` (`lookArt`, `weaponArt`, `hatArt`, `attackArt`, `monsterArt`, `glyphArt`), never from string concatenation in `main.js`; the rest are quoted paths passed to `src()` in `main.js`. A new picture goes in the generator, in the folder of what it shows.
 - `gpui-kit.d.ts` and `jsconfig.json` inside mod folders are written by Herdr and git-ignored.
