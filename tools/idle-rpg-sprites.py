@@ -34,7 +34,7 @@
 #               coin, star, armour, hat, gear, and the card's wrench
 #   font/       <colour>/<character>, the pixel font
 import math, os, struct, sys, zlib
-if len(sys.argv) != 2:
+if len(sys.argv) != 2 or sys.argv[1].startswith("-"):  # no options: "--help" is not a folder to fill
     sys.exit("usage: idle-rpg-sprites.py <output folder>")
 out = sys.argv[1]
 os.makedirs(out, exist_ok=True)
