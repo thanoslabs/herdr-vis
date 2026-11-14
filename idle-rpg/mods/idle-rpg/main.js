@@ -12,7 +12,7 @@
 // and drag an agent: it dangles from the
 // pointer; let go to drop it where it is (it falls to the floor). Spots and
 // classes are remembered.
-// Battle mode (the Start Raid / End Raid button by the sign): a random monster stands in the middle
+// Battle mode (the Start Raid / Return to town button by the sign): a random monster stands in the middle
 // (a slime has 100 HP, an ogre 300, a dragon 500) and the party forms up
 // around it, warriors up close and everyone else at range. Every working agent
 // attacks in its own way (sword swing, arrow, fireball, thrown potion) on its
@@ -1434,7 +1434,7 @@ export default class RaidParty extends View {
                 this.wake(cx);
                 cx.notify();
               })
-              .child(this.battle ? "End Raid" : "Start Raid"),
+              .child(this.battle ? "Return to town" : "Start Raid"),
           ),
       )
       .child(floor)
@@ -1470,9 +1470,11 @@ export default class RaidParty extends View {
   stations() {
     const spare = CLASSES.reduce((sum, c) => sum + pointsLeft(this.progress, c), 0);
     // Under the pointer a station shows it can be used, plainly enough for
-    // broad daylight: a gold frame and glow around it, a gold arrow bobbing
-    // over it, its picture hopping up a pixel of art, and its name on gold.
-    const station = (id, left, top, w, h, name, act, ...inside) => {
+    // broad daylight and in the scene's own style: its picture gains a white
+    // pixel outline (the "-hot" pictures) and hops up a pixel of art, a white
+    // arrow bobs over it, and its name goes white on a darker pill.
+    // `inside(hot)` is what hops; `still(hot)` stays put behind it
+    const station = (id, left, top, w, h, name, act, inside, still = () => []) => {
       const hot = this.hot === id;
       return div()
         .id(`idle-rpg-station-${id}`)
@@ -1481,10 +1483,6 @@ export default class RaidParty extends View {
         .top(top)
         .w(w)
         .h(h)
-        .rounded(8)
-        .border(2)
-        .border_color(hot ? GOLD : "#ffd16600")
-        .bg(hot ? "#ffd16640" : "#ffd16600")
         .cursor_pointer()
         .on_hover((hovered, cx) => {
           if (hovered) this.hot = id;
@@ -1496,6 +1494,7 @@ export default class RaidParty extends View {
           act();
           cx.notify();
         })
+        .children(still(hot))
         .child(
           div()
             .id(`idle-rpg-station-${id}-art`)
@@ -1503,7 +1502,7 @@ export default class RaidParty extends View {
             .left(0)
             .top(hot ? -4 : 0)
             .transition("top", { duration: 120, easing: "ease-out" })
-            .children(inside),
+            .children(inside(hot)),
         )
         .child(
           h_flex()
@@ -1516,10 +1515,10 @@ export default class RaidParty extends View {
               div()
                 .px(5)
                 .rounded(7)
-                .bg(hot ? GOLD : "#00000066")
+                .bg(hot ? "#000000b8" : "#00000066")
                 .text_size(10)
                 .font_semibold()
-                .text_color(hot ? "#2a1a0c" : CREAM)
+                .text_color(hot ? "#ffffff" : CREAM)
                 .child(name),
             ),
         )
@@ -1534,15 +1533,26 @@ export default class RaidParty extends View {
           ),
         );
     };
-    const art = (name, w, h, left = 0, top = 0) =>
+    // a picture, or under the pointer its outlined twin, a pixel of art (4px) bigger on every side
+    const art = (name, hot, w, h, left = 0, top = 0) =>
       div()
         .absolute()
-        .left(left)
-        .top(top)
-        .child(image(`${ART}/${name}.png`).w(w).h(h));
+        .left(hot ? left - 4 : left)
+        .top(hot ? top - 4 : top)
+        .child(image(`${ART}/${name}${hot ? "-hot" : ""}.png`).w(hot ? w + 8 : w).h(hot ? h + 8 : h));
     return [
       // over the table that is always there, with the book lying on it
-      station("codex", 12, -34, 112, 56, "Codex", () => this.openCodex(!this.codex), art("book", 32, 24, 36, -8)),
+      station(
+        "codex",
+        12,
+        -34,
+        112,
+        56,
+        "Codex",
+        () => this.openCodex(!this.codex),
+        (hot) => [art("book", hot, 32, 24, 36, -8)],
+        (hot) => (hot ? [art("table", true, 112, 56)] : []), // outlined over the table that is always there
+      ),
       station(
         "skills",
         204,
@@ -1551,9 +1561,9 @@ export default class RaidParty extends View {
         72,
         spare > 0 ? `Skills +${spare}` : "Skills",
         () => this.openSkills(this.skillsOpen ? null : (CLASSES.find((c) => pointsLeft(this.progress, c) > 0) ?? this.sprites[YOU])),
-        art("dummy", 48, 72),
+        (hot) => [art("dummy", hot, 48, 72)],
       ),
-      station("shop", 304, -64, 104, 84, "Shop", () => this.openShop(this.shopOpen ? null : this.sprites[YOU]), art("stall", 104, 84)),
+      station("shop", 304, -64, 104, 84, "Shop", () => this.openShop(this.shopOpen ? null : this.sprites[YOU]), (hot) => [art("stall", hot, 104, 84)]),
     ];
   }
 
