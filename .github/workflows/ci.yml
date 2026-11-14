@@ -26,6 +26,17 @@ jobs:
             exit 1
           fi
 
+      - name: Check for stray pictures
+        run: |
+          # Pictures live in a mod's art/ folder, or are a visualizer's preview.png
+          # or battle.gif: anywhere else is a generator run into the wrong folder.
+          found="$(git ls-files '*.png' '*.gif' | grep -v -E '^[^/]+/(mods/[^/]+/art/|preview\.png$|battle\.gif$)' || true)"
+          if [ -n "$found" ]; then
+            echo "Error: pictures outside a mod's art folder:"
+            echo "$found" | head -20
+            exit 1
+          fi
+
       - name: Validate YAML and JSON files
         run: |
           status=0
