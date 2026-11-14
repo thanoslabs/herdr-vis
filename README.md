@@ -1,8 +1,8 @@
-# herdr-vis
+# herdr-idle
 
-[![Release](https://img.shields.io/github/v/release/thanoslabs/herdr-vis?sort=semver&display_name=tag)](https://github.com/thanoslabs/herdr-vis/releases/latest)
-[![Renovate](https://img.shields.io/badge/renovate-enabled-brightgreen?logo=renovatebot)](https://github.com/thanoslabs/herdr-vis/pulls?q=is%3Apr+author%3Aapp%2Frenovate)
-[![License: MIT](https://img.shields.io/github/license/thanoslabs/herdr-vis)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/thanoslabs/herdr-idle?sort=semver&display_name=tag)](https://github.com/thanoslabs/herdr-idle/releases/latest)
+[![Renovate](https://img.shields.io/badge/renovate-enabled-brightgreen?logo=renovatebot)](https://github.com/thanoslabs/herdr-idle/pulls?q=is%3Apr+author%3Aapp%2Frenovate)
+[![License: MIT](https://img.shields.io/github/license/thanoslabs/herdr-idle)](LICENSE)
 
 Agent workspace visualizers for the [Herdr](https://herdr.dev) desktop app: layouts that show your coding agents as something more fun than a list.
 
@@ -44,8 +44,8 @@ Each visualizer is a folder laid out like Herdr's config folder (`~/.config/herd
 Clone the repo and copy the layout into Herdr:
 
 ```sh
-git clone https://github.com/thanoslabs/herdr-vis.git
-cd herdr-vis
+git clone https://github.com/thanoslabs/herdr-idle.git
+cd herdr-idle
 ./install.sh idle-rpg
 herdr-app do layout.switch --name idle-rpg
 ```
