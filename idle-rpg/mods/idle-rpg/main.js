@@ -12,7 +12,7 @@
 // and drag an agent: it dangles from the
 // pointer; let go to drop it where it is (it falls to the floor). Spots and
 // classes are remembered.
-// Battle mode (the Start Raid / End Raid button by the sign): a random monster stands in the middle
+// Battle mode (the Start Raid / Return to town button by the sign): a random monster stands in the middle
 // (a slime has 100 HP, an ogre 300, a dragon 500) and the party forms up
 // around it, warriors up close and everyone else at range. Every working agent
 // attacks in its own way (sword swing, arrow, fireball, thrown potion) on its
@@ -240,6 +240,7 @@ export default class RaidParty extends View {
     this.drag = null; // { address, x, y, vx, last } while a critter dangles
     this.card = null; // whose card is open: an agent's address, or YOU
     this.codex = false; // the list of kills by kind is open under the sign
+    this.hot = null; // the station under the pointer: "codex" | "skills" | "shop"
     this.skillsOpen = null; // the class the skills panel under the sign shows, while it is open
     this.shopOpen = null; // the class the shop under the sign shows, while it is open
     this.shopKind = SHOP_KINDS[0]; // the kind of item it shows: the one picked down its left side
@@ -1242,6 +1243,7 @@ export default class RaidParty extends View {
           // the table and the barrel stand at the back, clear of the monster's corner
           .child(div().absolute().left(12).top(-34).child(image(`${ART}/table.png`).w(112).h(56)))
           .child(div().absolute().left(136).top(-30).child(image(`${ART}/barrel.png`).w(48).h(52)))
+          .when(!this.battle, (el) => el.children(this.stations()))
           .children(actors.flatMap((p) => p.draw()))
           .child(this.gloom(W))
           .when(list.length === 0, (el) =>
@@ -1366,12 +1368,7 @@ export default class RaidParty extends View {
                           .hover((st) => st.bg("#ffffff30"))
                           .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
                           .on_click((_e, cx) => {
-                            this.codex = !this.codex;
-                            if (this.codex) {
-                              // only one panel or card at a time
-                              this.skillsOpen = this.shopOpen = this.card = null;
-                              this.picking = false;
-                            }
+                            this.openCodex(!this.codex);
                             cx.notify();
                           }),
                       )
@@ -1429,22 +1426,22 @@ export default class RaidParty extends View {
               .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
               .on_click((_e, cx) => {
                 this.battle = !this.battle;
-                // the codex and the shop open from chips the sign shows only in a raid
+                // the panels open from different places in a raid and out of one
                 this.codex = false;
-                this.shopOpen = null;
+                this.skillsOpen = this.shopOpen = null;
                 if (this.battle) this.fight(); // someone to fight straight away
                 this.save();
                 this.wake(cx);
                 cx.notify();
               })
-              .child(this.battle ? "End Raid" : "Start Raid"),
+              .child(this.battle ? "Return to town" : "Start Raid"),
           ),
       )
       .child(floor)
       // last, so they lie over the floor and everyone on it
-      .when(this.codex && this.battle, (el) => el.child(this.codexCard(props()?.inset ?? 84)))
+      .when(this.codex, (el) => el.child(this.codexCard(props()?.inset ?? 84)))
       .when(CLASSES.includes(this.skillsOpen), (el) => el.child(this.skillsCard(props()?.inset ?? 84)))
-      .when(this.battle && CLASSES.includes(this.shopOpen), (el) => el.child(this.shopCard(props()?.inset ?? 84)));
+      .when(CLASSES.includes(this.shopOpen), (el) => el.child(this.shopCard(props()?.inset ?? 84)));
   }
 
   // Opens the skills panel on class `cls` (null closes it), closing the codex,
@@ -1455,6 +1452,119 @@ export default class RaidParty extends View {
     this.codex = false;
     this.shopOpen = this.card = null;
     this.picking = false;
+  }
+
+  // Opens or closes the codex, closing the other panels and any card.
+  openCodex(open) {
+    this.codex = open;
+    if (!open) return;
+    this.skillsOpen = this.shopOpen = this.card = null;
+    this.picking = false;
+  }
+
+  // Between raids the rampart has three stations, each opening one of the
+  // panels the sign's chips open during one: the book on the table is the
+  // codex, the merchant's stall the shop, and the training dummy the skills
+  // (with the points waiting to be spent, if any). Returns elements for the
+  // floor; they stand at the back, between the banners and torches.
+  stations() {
+    const spare = CLASSES.reduce((sum, c) => sum + pointsLeft(this.progress, c), 0);
+    // Under the pointer a station shows it can be used, plainly enough for
+    // broad daylight and in the scene's own style: its picture gains a white
+    // pixel outline (the "-hot" pictures) and hops up a pixel of art, a white
+    // arrow bobs over it, and its name goes white on a darker pill.
+    // `inside(hot)` is what hops; `still(hot)` stays put behind it
+    const station = (id, left, top, w, h, name, act, inside, still = () => []) => {
+      const hot = this.hot === id;
+      return div()
+        .id(`idle-rpg-station-${id}`)
+        .absolute()
+        .left(left)
+        .top(top)
+        .w(w)
+        .h(h)
+        .cursor_pointer()
+        .on_hover((hovered, cx) => {
+          if (hovered) this.hot = id;
+          else if (this.hot === id) this.hot = null;
+          cx.notify();
+        })
+        .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+        .on_click((_e, cx) => {
+          act();
+          cx.notify();
+        })
+        .children(still(hot))
+        .child(
+          div()
+            .id(`idle-rpg-station-${id}-art`)
+            .absolute()
+            .left(0)
+            .top(hot ? -4 : 0)
+            .transition("top", { duration: 120, easing: "ease-out" })
+            .children(inside(hot)),
+        )
+        .child(
+          h_flex()
+            .absolute()
+            .left(w / 2 - 40)
+            .top(h + 3)
+            .w(80)
+            .justify_center()
+            .child(
+              div()
+                .px(5)
+                .rounded(7)
+                .bg(hot ? "#000000b8" : "#00000066")
+                .text_size(10)
+                .font_semibold()
+                .text_color(hot ? "#ffffff" : CREAM)
+                .child(name),
+            ),
+        )
+        .when(hot, (el) =>
+          el.child(
+            div()
+              .absolute()
+              .left(w / 2 - 14)
+              .top(-38)
+              .loop("top", { from: -38, to: -30, period: 420 })
+              .child(image(`${ART}/arrow.png`).w(28).h(20)),
+          ),
+        );
+    };
+    // a picture, or under the pointer its outlined twin, a pixel of art (4px) bigger on every side
+    const art = (name, hot, w, h, left = 0, top = 0) =>
+      div()
+        .absolute()
+        .left(hot ? left - 4 : left)
+        .top(hot ? top - 4 : top)
+        .child(image(`${ART}/${name}${hot ? "-hot" : ""}.png`).w(hot ? w + 8 : w).h(hot ? h + 8 : h));
+    return [
+      // over the table that is always there, with the book lying on it
+      station(
+        "codex",
+        12,
+        -34,
+        112,
+        56,
+        "Codex",
+        () => this.openCodex(!this.codex),
+        (hot) => [art("book", hot, 32, 24, 36, -8)],
+        (hot) => (hot ? [art("table", true, 112, 56)] : []), // outlined over the table that is always there
+      ),
+      station(
+        "skills",
+        204,
+        -52,
+        48,
+        72,
+        spare > 0 ? `Skills +${spare}` : "Skills",
+        () => this.openSkills(this.skillsOpen ? null : (CLASSES.find((c) => pointsLeft(this.progress, c) > 0) ?? this.sprites[YOU])),
+        (hot) => [art("dummy", hot, 48, 72)],
+      ),
+      station("shop", 304, -64, 104, 84, "Shop", () => this.openShop(this.shopOpen ? null : this.sprites[YOU]), (hot) => [art("stall", hot, 104, 84)]),
+    ];
   }
 
   // Opens the shop on class `cls` (null closes it), closing the codex, the

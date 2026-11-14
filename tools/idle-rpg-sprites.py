@@ -317,7 +317,7 @@ save("banner.png", chars([
     ".rr....rr.",
     ".r......r.",
 ], {"b": "#7a5230", "r": "#c94040", "R": "#a53030", "g": "#f2c14e", "w": "#fff3b0"}))
-save("table.png", chars([
+TABLE = chars([
     "....................gg......",
     "..ccccc.............gg...y..",
     ".cc...cc...........pppp..o..",
@@ -333,7 +333,81 @@ save("table.png", chars([
     ".dtt....................ttd.",
     ".ddd....................ddd.",
 ], {"c": "#f4ecd8", "g": "#9fd8e8", "p": "#c94040", "P": "#e86a6a", "y": "#ffe27a", "o": "#ff9d3c", "w": "#f4f7fb",
-    "T": "#b98047", "t": "#9a6639", "d": "#6e4525"}))
+    "T": "#b98047", "t": "#9a6639", "d": "#6e4525"})
+save("table.png", TABLE)
+# ---- Stations, on the rampart between raids: each opens one of the panels ----
+# Each also comes as "<name>-hot": the same picture inside a one-pixel white
+# outline (so one art pixel bigger on every side), shown under the pointer.
+def lit(g):
+    h, w = len(g), len(g[0])
+    big = [[None] * (w + 2) for _ in range(h + 2)]
+    for y in range(h):
+        for x in range(w): big[y + 1][x + 1] = g[y][x]
+    o = [r[:] for r in big]
+    for y in range(h + 2):
+        for x in range(w + 2):
+            if big[y][x] is None and any(0 <= y+j < h+2 and 0 <= x+i < w+2 and big[y+j][x+i] for i, j in ((1,0),(-1,0),(0,1),(0,-1))):
+                o[y][x] = "#ffffff"
+    return o
+
+def station(name, rows, pal):
+    g = chars(rows, pal)
+    save(name + ".png", g)
+    save(name + "-hot.png", lit(g))
+
+save("table-hot.png", lit(TABLE))                 # the codex is the whole table, and the book on it
+station("book", [                                # the codex, lying on the table
+    ".bbbbbb.",
+    "bBBBBBBb",
+    "bBBggBBb",
+    "bBBggBBb",
+    "bBBBBBBb",
+    "wwwwwwwb",
+], {"b": "#3b2a6b", "B": "#6b4fbf", "g": "#f2c14e", "w": "#f4ecd8"})
+station("stall", [                               # the shop: a merchant's stall
+    "..rrwwrrwwrrwwrrwwrrwwrr..",
+    ".rrwwrrwwrrwwrrwwrrwwrrww.",
+    "rrwwrrwwrrwwrrwwrrwwrrwwrr",
+    "RRWWRRWWRRWWRRWWRRWWRRWWRR",
+    "R..WW..RR..WW..RR..WW..RR.",
+    ".d......................d.",
+    ".d......................d.",
+    ".d......................d.",
+    ".d...........pp.........d.",
+    ".d..gg......pppp...yy...d.",
+    ".d.gGGg.....pPPp..yYYy..d.",
+    "TTTTTTTTTTTTTTTTTTTTTTTTTT",
+    "tttttttttttttttttttttttttt",
+    "dddddddddddddddddddddddddd",
+    ".dtTttTttTttTttTttTttTttd.",
+    ".dtTttTttTttTttTttTttTttd.",
+    ".dtTttTttTttTttTttTttTttd.",
+    ".dtTttTttTttTttTttTttTttd.",
+    ".dtTttTttTttTttTttTttTttd.",
+    ".dtTttTttTttTttTttTttTttd.",
+    ".dddddddddddddddddddddddd.",
+], {"r": "#c94040", "R": "#a53030", "w": "#f4ecd8", "W": "#d8cfb8", "g": "#c8891e", "G": "#f2c14e", "p": "#3f8fd0", "P": "#9fd8e8",
+    "y": "#3fbf6f", "Y": "#9be6b4", "T": "#b98047", "t": "#9a6639", "d": "#6e4525"})
+station("dummy", [                               # the skills: a straw training dummy
+    "....ssss....",
+    "...sSSSSs...",
+    "...sSSSSs...",
+    "....ssss....",
+    "bbbbbbbbbbbb",
+    "..yyYYYYyy..",
+    "..yYYrrYYy..",
+    "..yYrwwrYy..",
+    "..yYrwwrYy..",
+    "..yYYrrYYy..",
+    "..yyYYYYyy..",
+    "...yyyyyy...",
+    ".....bb.....",
+    ".....bb.....",
+    ".....bb.....",
+    ".....bb.....",
+    "...bbbbbb...",
+    "..bbbbbbbb..",
+], {"s": "#b89a62", "S": "#d9c08a", "b": "#7a5230", "y": "#c9a03c", "Y": "#e6c766", "r": "#c94040", "w": "#f4ecd8"})
 save("barrel.png", chars([
     "..tttttttt..",
     ".tTTTTTTTTt.",
@@ -464,6 +538,7 @@ icon("i-skull.png", [                                   # slain
     ".wwwww.",
     ".wkwkw.",
 ], {"w": "#ece6d6", "k": "#2a2433"})
+icon("arrow.png", ["wwwww", ".www.", "..w.."], {"w": "#ffffff"})  # bobs over the station under the pointer
 icon("i-armour.png", [                                  # the shop's armours
     "aa...aa",
     "aAaaaAa",

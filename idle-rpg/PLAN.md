@@ -56,7 +56,7 @@ Planning notes for growing this layout from a visualizer with a battle mode into
 - Default: each class has its default colourway (free, always owned) and three more to buy, priced 5, 10 and 20 gold (`COLOUR_PRICES`). Buying is permanent; an owned colourway can be equipped and swapped freely at no cost. No refunds, no selling.
 - Default: buying a colourway also puts it on (one click; the default or any other owned one is a free click away).
 - Gold can never go negative; a purchase that cannot be afforded does nothing (the Buy button is dimmed).
-- The shop closes when the raid ends, like the codex, since the gold chip only shows in battle mode; the skills panel stays open, as its star stays on the sign.
+- **Owner's decision:** the codex, the shop and the skills are also reachable between raids, from stations on the rampart: a book on the table (codex), a merchant's stall (shop) and a training dummy (skills; the dummy was my pick, a **default**). **Built.** Starting or ending a raid closes whichever panel is open.
 - Colourways are palette swaps in `tools/idle-rpg-sprites.py` (`LOOKS`) of every picture a class has, named `<class>-<id>*.png`; the default keeps `<class>*.png`. The catalogue (`SHOP` in `rules.js`) has one entry per kind of item with a list per class, and the state keeps owned and equipped per class per kind, so hats can be added as another kind without a rewrite.
 
 ### Kill counts
