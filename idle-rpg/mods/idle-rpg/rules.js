@@ -9,13 +9,15 @@
 // which make every character on that class hit harder, faster or with a
 // chance of a critical blow. Killing a monster earns gold and counts towards
 // its kind. Gold buys looks in the shop, which also belong to a class: every
-// character with that class on wears its colourway. Levels are worked out from
-// total experience, never stored; skill ranks are stored, and points left are
-// worked out from levels and ranks.
+// character with that class on wears its colourway and its hat (a hat, once
+// bought, can be worn by any class). Levels are worked out from total
+// experience, never stored; skill ranks are stored, and points left are
+// worked out from levels and ranks. Settings (SETTINGS) are kept with the
+// rest of the state.
 
 export const CLASSES = ["wizard", "healer", "warrior", "archer"];
 export const YOU = "you"; // the person's key in `sprites`, `xp` and as an open card
-export const STATE_VERSION = 3;
+export const STATE_VERSION = 4;
 // Each kind's HP, kept on a monster as `maxHp` when it turns up. The kinds are
 // the keys of MONSTERS in main.js, which draws them.
 export const MONSTER_HP = { slime: 100, ogre: 300, dragon: 500 };
@@ -61,13 +63,17 @@ export const ATTACK_JITTER = 2;
 // The shop. Gold buys looks for a class (never an agent, which is short-lived):
 // everyone with that class on, agents and you alike, wears what the class has
 // equipped. Each kind of item has a catalogue per class, and each class keeps,
-// per kind, what it owns and which one it has on. Armours (colourways of the
-// whole outfit) are the only kind with anything for sale so far; weapons and
-// hats are there as kinds, for the shop to list, with empty catalogues. The first item of every
-// catalogue is the class's default look: free, always owned. Buying is for
-// good (no refunds), and changing between owned items is free.
+// per kind, which one it has on and, for most kinds, what it owns. Armours
+// (colourways of the whole outfit) are each class's own. Hats are not tied to
+// a class: every class has the same catalogue, and a hat bought once is owned
+// by all four, kept once in the state under the kind's `shared` key, though
+// each class still puts on its own. Weapons are there as a kind, for the shop
+// to list, with empty catalogues. The first item of every catalogue is the
+// class's default look: free, always owned. Buying is for good (no refunds),
+// and changing between owned items is free.
 export const DEFAULT_LOOK = "default";
 export const COLOUR_PRICES = [5, 10, 20]; // gold for each class's three colourways after the default, in order
+export const HAT_PRICES = [10, 20, 30]; // gold for each hat after the default, in order, bought once for every class
 // Each class's colourways as [id, name]. The ids after the default, in this
 // order, must match LOOKS in tools/idle-rpg-sprites.py, which draws them.
 const COLOUR_NAMES = {
@@ -76,7 +82,15 @@ const COLOUR_NAMES = {
   warrior: [[DEFAULT_LOOK, "Steel"], ["cobalt", "Cobalt"], ["jade", "Jade"], ["ruby", "Ruby"]],
   archer: [[DEFAULT_LOOK, "Forest"], ["scarlet", "Scarlet"], ["azure", "Azure"], ["dusk", "Dusk"]],
 };
-// Kinds of item: { name (for the shop), items: { <class>: [{ id, name, price }] } }.
+// Every hat as [id, name]; the default is the class's own headgear. The ids
+// after the default, in this order, must match HATS in
+// tools/idle-rpg-sprites.py, which draws each over every class.
+const HAT_NAMES = [[DEFAULT_LOOK, "No hat"], ["party", "Party Hat"], ["santa", "Santa Hat"], ["pumpkin", "Pumpkin"]];
+const HATS = HAT_NAMES.map(([id, name], i) => ({ id, name, price: i ? HAT_PRICES[i - 1] : 0 }));
+// Kinds of item: { name (for the shop), items: { <class>: [{ id, name, price }] },
+// shared? }. `shared` names the state's key for a kind whose items are bought
+// once for every class: it sells the same to each, and what is owned is kept
+// there, once, instead of per class.
 export const SHOP = {
   armour: {
     name: "Armours",
@@ -85,16 +99,35 @@ export const SHOP = {
     ),
   },
   weapon: { name: "Weapons", items: Object.fromEntries(CLASSES.map((c) => [c, []])) },
-  hat: { name: "Hats", items: Object.fromEntries(CLASSES.map((c) => [c, []])) },
+  hat: { name: "Hats", items: Object.fromEntries(CLASSES.map((c) => [c, HATS])), shared: "hats" },
 };
 export const SHOP_KINDS = Object.keys(SHOP);
 
 // Every picture a class has in art/, as what follows its name: standing,
 // walking, dangling, and the fighting poses (stance, wind-up, strike) facing
 // each way. main.js draws them; tools/idle-rpg-sprites.py draws each of them
-// in every colourway.
+// in every colourway, and every hat to lay over each.
 export const POSES = ["f", "a1", "a2"];
 export const FRAMES = ["", "-walk-l", "-walk-r", "-rag-c", "-rag-l", "-rag-r", ...POSES.flatMap((p) => [`-${p}-l`, `-${p}-r`])];
+
+// The settings menu (the gear in the top-right corner): one switch per entry,
+// in this order, each { key, name, default }. A setting is a boolean saved under
+// `settings.<key>`; adding one is adding an entry here and reading it in main.js.
+export const SETTINGS = [{ key: "damageNumbers", name: "Show damage numbers", default: true }];
+
+// The pixel font (main.js lays numbers out with it): the characters it has,
+// each drawn in every one of GLYPH_COLOURS by tools/idle-rpg-sprites.py.
+export const GLYPHS = "0123456789+!";
+export const GLYPH_COLOURS = ["white", "gold"];
+const GLYPH_NAMES = { "+": "plus", "!": "bang" };
+
+// The name one character of the pixel font goes by in art/ in `colour`
+// ("glyph-gold-7", "glyph-white-plus"; add ".png" for a file), or null for a
+// character or colour it does not have, so no other string can end up in a path.
+export function glyphArt(colour, ch) {
+  if (!GLYPH_COLOURS.includes(colour) || typeof ch !== "string" || ch.length !== 1 || !GLYPHS.includes(ch)) return null;
+  return `glyph-${colour}-${GLYPH_NAMES[ch] ?? ch}`;
+}
 
 const MAX = Number.MAX_SAFE_INTEGER;
 const MAX_MONSTER_HP = 1e6; // the most a saved monster is believed to have
@@ -166,10 +199,17 @@ function noRanks(cls) {
   return Object.fromEntries((CLASS_SKILLS[cls] ?? []).map((k) => [k, 0]));
 }
 
+// The kinds bought once for every class, and the state's key for what of each is owned.
+const SHARED = SHOP_KINDS.filter((k) => SHOP[k].shared).map((k) => [k, SHOP[k].shared]);
+
+// A class's slot for one kind with nothing bought: { owned: [DEFAULT_LOOK],
+// equipped: DEFAULT_LOOK }, or only { equipped } for a kind bought for every class.
+const noSlot = (kind) => (SHOP[kind].shared ? { equipped: DEFAULT_LOOK } : { owned: [DEFAULT_LOOK], equipped: DEFAULT_LOOK });
+
 // Every class in its default look, owning nothing else:
-// { <class>: { <kind>: { owned: [DEFAULT_LOOK], equipped: DEFAULT_LOOK } } }.
+// { <class>: { <kind>: { owned: [DEFAULT_LOOK], equipped: DEFAULT_LOOK } | { equipped: DEFAULT_LOOK } } }.
 function noLooks() {
-  return Object.fromEntries(CLASSES.map((c) => [c, Object.fromEntries(SHOP_KINDS.map((k) => [k, { owned: [DEFAULT_LOOK], equipped: DEFAULT_LOOK }]))]));
+  return Object.fromEntries(CLASSES.map((c) => [c, Object.fromEntries(SHOP_KINDS.map((k) => [k, noSlot(k)]))]));
 }
 
 // Fresh progress: what a new party starts with.
@@ -181,6 +221,7 @@ export function newProgress() {
     xp: Object.fromEntries([YOU, ...CLASSES].map((k) => [k, 0])),
     skills: Object.fromEntries(CLASSES.map((c) => [c, noRanks(c)])),
     looks: noLooks(),
+    ...Object.fromEntries(SHARED.map(([, key]) => [key, []])), // hats: [<id>], bought for every class
   };
 }
 
@@ -296,10 +337,18 @@ function itemOf(cls, kind, id) {
   return catalogue(cls, kind).find((it) => it.id === id);
 }
 
-// Whether `cls` owns item `id` of `kind`. The default always counts as owned.
+// What `cls` has bought of `kind` (a known kind): the class's own list, or for
+// a kind bought for every class, everyone's.
+function bought(progress, cls, kind) {
+  const list = SHOP[kind].shared ? progress[SHOP[kind].shared] : progress.looks?.[cls]?.[kind]?.owned;
+  return Array.isArray(list) ? list : [];
+}
+
+// Whether `cls` owns item `id` of `kind`. The default always counts as owned,
+// and a hat bought for any class counts for every one.
 export function owns(progress, cls, kind, id) {
   if (!itemOf(cls, kind, id)) return false;
-  return id === DEFAULT_LOOK || Boolean(progress.looks?.[cls]?.[kind]?.owned?.includes(id));
+  return id === DEFAULT_LOOK || bought(progress, cls, kind).includes(id);
 }
 
 // The id of the item of `kind` that `cls` has on: the default unless it has
@@ -317,12 +366,19 @@ export function canBuy(progress, cls, kind, id) {
 }
 
 // Buys item `id` of `kind` for `cls` if it can: the price comes off the gold
-// and the class owns it for good. It is not put on. Returns whether it bought it.
+// and the class owns it for good (a hat, every class does). It is not put on.
+// Returns whether it bought it.
 export function buy(progress, cls, kind, id) {
   if (!canBuy(progress, cls, kind, id)) return false;
   progress.gold = count(progress.gold) - itemOf(cls, kind, id).price;
-  const slot = (((progress.looks ??= {})[cls] ??= {})[kind] ??= { owned: [DEFAULT_LOOK], equipped: DEFAULT_LOOK });
-  slot.owned.push(id);
+  const key = SHOP[kind].shared;
+  if (key) {
+    if (!Array.isArray(progress[key])) progress[key] = [];
+    progress[key].push(id);
+  } else {
+    const slot = (((progress.looks ??= {})[cls] ??= {})[kind] ??= noSlot(kind));
+    slot.owned.push(id);
+  }
   return true;
 }
 
@@ -330,7 +386,7 @@ export function buy(progress, cls, kind, id) {
 // have it on already. Returns whether anything changed.
 export function equip(progress, cls, kind, id) {
   if (!owns(progress, cls, kind, id) || equipped(progress, cls, kind) === id) return false;
-  progress.looks[cls][kind].equipped = id; // owning it means the slot is there
+  (((progress.looks ??= {})[cls] ??= {})[kind] ??= noSlot(kind)).equipped = id; // a hat bought for another class may find no slot
   return true;
 }
 
@@ -345,25 +401,47 @@ export function lookArt(cls, colour) {
   return colour !== DEFAULT_LOOK && itemOf(c, "armour", colour) ? `${c}-${colour}` : c;
 }
 
+// The name of hat `hat`'s pictures for class `cls` in art/: "hat-<hat>-<class>"
+// ("hat-party-wizard", so "hat-party-wizard-walk-l.png"), each laid over the
+// class's picture of the same frame at the same size. Add one of FRAMES and
+// ".png" for a file. Null for no hat: the default, or anything that is not a
+// hat for sale, so no other string can end up in a path (an unknown class
+// gets the first, as in lookArt).
+export function hatArt(cls, hat) {
+  const c = CLASSES.includes(cls) ? cls : CLASSES[0];
+  return hat !== DEFAULT_LOOK && itemOf(c, "hat", hat) ? `hat-${hat}-${c}` : null;
+}
+
+// The ids of `items` after the default that a saved list holds, in
+// catalogue order, each once; nothing else.
+function kept(list, items) {
+  const saved = Array.isArray(list) ? list : [];
+  return items.map((it) => it.id).filter((id) => id !== DEFAULT_LOOK && saved.includes(id));
+}
+
 // A class's saved looks: per kind, the items it owns, in catalogue order with
 // the default always among them and anything unknown or repeated dropped,
 // and the one it has on, which falls back to the default if it is not owned.
-function looksOf(saved, cls) {
+// A kind bought for every class keeps only the one on, checked against
+// `shared`, what everyone owns ({ hats: [<id>] }, already checked).
+function looksOf(saved, cls, shared) {
   return Object.fromEntries(
     SHOP_KINDS.map((kind) => {
       // armours were first saved as "colour"
       const key = record(saved) && !has(saved, kind) && kind === "armour" ? "colour" : kind;
       const slot = record(saved) && has(saved, key) && record(saved[key]) ? saved[key] : {};
-      const list = Array.isArray(slot.owned) ? slot.owned : [];
-      const owned = [
-        DEFAULT_LOOK, // also for a kind with nothing for sale yet
-        ...catalogue(cls, kind)
-          .map((it) => it.id)
-          .filter((id) => id !== DEFAULT_LOOK && list.includes(id)),
-      ];
-      return [kind, { owned, equipped: owned.includes(slot.equipped) ? slot.equipped : DEFAULT_LOOK }];
+      // the default always, also for a kind with nothing for sale yet
+      const owned = [DEFAULT_LOOK, ...(SHOP[kind].shared ? shared[SHOP[kind].shared] : kept(slot.owned, catalogue(cls, kind)))];
+      const on = owned.includes(slot.equipped) ? slot.equipped : DEFAULT_LOOK;
+      return [kind, SHOP[kind].shared ? { equipped: on } : { owned, equipped: on }];
     }),
   );
+}
+
+// The saved settings: every one of SETTINGS, its saved value if that is a
+// boolean, else its default. Anything else saved there is dropped.
+export function settingsOf(saved) {
+  return Object.fromEntries(SETTINGS.map(({ key, default: on }) => [key, record(saved) && has(saved, key) && typeof saved[key] === "boolean" ? saved[key] : on]));
 }
 
 // The saved monster, or null if it is not one: { kind, hp, maxHp, id, slainAt? }.
@@ -390,9 +468,9 @@ function ranksOf(saved, cls, xp) {
 }
 
 // The saved state as this version keeps it, from whatever was read back:
-// older versions without the progress fields, skill ranks or looks, or anything
-// malformed. Never throws; a bad field falls back to its default, a bad entry
-// is dropped.
+// older versions without the progress fields, skill ranks, looks, hats or
+// settings, or anything malformed. Never throws; a bad field falls back to
+// its default, a bad entry is dropped.
 //
 // State written by a later version keeps its version number: this version can
 // read what it knows of it, but must not save over it (see save in main.js),
@@ -401,6 +479,9 @@ export function loadState(saved, now = Date.now()) {
   const s = record(saved) ? saved : {};
   const fresh = newProgress();
   const xp = Object.fromEntries(Object.keys(fresh.xp).map((k) => [k, count(record(s.xp) ? s.xp[k] : 0)]));
+  // version 3 and before sold no hats: none owned. Every class sells the same
+  // hats, so the first class's catalogue checks them.
+  const shared = Object.fromEntries(SHARED.map(([kind, key]) => [key, kept(has(s, key) ? s[key] : undefined, catalogue(CLASSES[0], kind))]));
   return {
     version: Math.max(STATE_VERSION, count(s.version)),
     you: point(s.you) ?? { x: 154, y: 16 },
@@ -417,6 +498,9 @@ export function loadState(saved, now = Date.now()) {
     // version 1 had no skills: every rank starts at 0
     skills: Object.fromEntries(CLASSES.map((c) => [c, ranksOf(record(s.skills) ? s.skills[c] : undefined, c, xp[c])])),
     // versions 1 and 2 had no shop: every class owns and wears its default
-    looks: Object.fromEntries(CLASSES.map((c) => [c, looksOf(record(s.looks) && has(s.looks, c) ? s.looks[c] : undefined, c)])),
+    looks: Object.fromEntries(CLASSES.map((c) => [c, looksOf(record(s.looks) && has(s.looks, c) ? s.looks[c] : undefined, c, shared)])),
+    ...shared, // hats: [<id>], owned by every class
+    // versions 1 to 3 had no settings: every one starts at its default
+    settings: settingsOf(s.settings),
   };
 }
